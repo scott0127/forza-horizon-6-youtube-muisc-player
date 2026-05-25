@@ -3,19 +3,32 @@ $ErrorActionPreference = 'Stop'
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 Set-Location $scriptDir
 
-if (-not (Test-Path -LiteralPath '.venv\Scripts\python.exe')) {
+$venvPython = Join-Path $scriptDir '.venv\Scripts\python.exe'
+
+if (Test-Path -LiteralPath $venvPython) {
+    $venvVersion = & $venvPython -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')" 2>$null
+    if ($LASTEXITCODE -ne 0 -or [version]$venvVersion -ne [version]'3.12') {
+        Write-Host 'Existing .venv is not Python 3.12. Recreating it.'
+        Remove-Item -LiteralPath (Join-Path $scriptDir '.venv') -Recurse -Force
+    }
+}
+
+if (-not (Test-Path -LiteralPath $venvPython)) {
     & .\Install-Dependencies.ps1
 }
 else {
-    & .\.venv\Scripts\python.exe -m pip install -r requirements.txt
+    & $venvPython -m pip install -r requirements.txt
+    if ($LASTEXITCODE -ne 0) {
+        throw 'Failed to install dependencies.'
+    }
 }
 
-& .\.venv\Scripts\python.exe -m pip install --force-reinstall "setuptools<81" "pyinstaller==5.13.2" "pyinstaller-hooks-contrib<2025"
+& $venvPython -m pip install --force-reinstall "setuptools<81" "pyinstaller>=6.14,<7" "pyinstaller-hooks-contrib>=2025.8"
 if ($LASTEXITCODE -ne 0) {
     throw 'Failed to install PyInstaller.'
 }
 
-& .\.venv\Scripts\python.exe -m PyInstaller `
+& $venvPython -m PyInstaller `
     --clean `
     --noconsole `
     --onefile `

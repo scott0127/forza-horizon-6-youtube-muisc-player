@@ -8,6 +8,8 @@ Forza Music Overlay 是一個 Windows 小工具，可以在玩 Forza 時顯示 Y
 
 ### 一般使用者安裝
 
+一般使用者不需要安裝 Python 或任何 Python 依賴庫；`ForzaMusicOverlay.exe` 已經把需要的 runtime 與套件包在裡面。
+
 1. 解壓縮 `ForzaMusicOverlay.zip`。
 2. 打開資料夾 `ForzaMusicOverlay`。
 3. 雙擊 `Install-App.bat`。
@@ -79,10 +81,11 @@ Forza Music Overlay 是一個 Windows 小工具，可以在玩 Forza 時顯示 Y
 
 ### 開發者使用
 
-1. 執行 `Install-Dependencies.bat` 安裝 Python 套件。
-2. 雙擊 `Run-Overlay.vbs` 啟動。
-3. 執行 `Check-System.bat` 可檢查依賴、快捷鍵與目前媒體資訊。
-4. 執行以下指令可重新打包：
+1. 安裝 Python 3.12。
+2. 執行 `Install-Dependencies.bat` 安裝 Python 套件。
+3. 雙擊 `Run-Overlay.vbs` 啟動。
+4. 執行 `Check-System.bat` 可檢查依賴、快捷鍵與目前媒體資訊。
+5. 執行以下指令可重新打包：
 
 ```powershell
 .\Build-Release.ps1
@@ -97,6 +100,8 @@ Forza Music Overlay is a small Windows helper that shows the currently playing Y
 The app reads the current Windows media session. You sign in through the official YouTube Music website, and the app never asks for, stores, or reads your Google password.
 
 ### Install For Normal Users
+
+Normal users do not need to install Python or any Python dependencies. `ForzaMusicOverlay.exe` already bundles the required runtime and packages.
 
 1. Unzip `ForzaMusicOverlay.zip`.
 2. Open the `ForzaMusicOverlay` folder.
@@ -169,10 +174,11 @@ Double-click `Uninstall-App.bat` in the installed folder to remove the desktop a
 
 ### Developer Notes
 
-1. Run `Install-Dependencies.bat` to install Python packages.
-2. Double-click `Run-Overlay.vbs` to start the app.
-3. Run `Check-System.bat` to verify dependencies, hotkeys, and current media metadata.
-4. Run this command to build the release package:
+1. Install Python 3.12.
+2. Run `Install-Dependencies.bat` to install Python packages.
+3. Double-click `Run-Overlay.vbs` to start the app.
+4. Run `Check-System.bat` to verify dependencies, hotkeys, and current media metadata.
+5. Run this command to build the release package:
 
 ```powershell
 .\Build-Release.ps1

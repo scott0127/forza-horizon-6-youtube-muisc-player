@@ -446,8 +446,8 @@ class GamepadThread(threading.Thread):
         finally:
             try:
                 pygame.quit()
-            except Exception:
-                pass
+            except Exception as exc:
+                self.output.put(("gamepad_status", f"手把控制關閉時發生錯誤：{exc}"))
 
 
 def rounded_rectangle_points(x1: int, y1: int, x2: int, y2: int, radius: int) -> list[int]:
@@ -1227,8 +1227,8 @@ class OverlayUI:
         if self.setup_window is not None and self.setup_window.winfo_exists():
             try:
                 self.setup_window.grab_release()
-            except Exception:
-                pass
+            except tk.TclError as exc:
+                self.status_text.set(f"關閉設定視窗時發生錯誤：{exc}")
             self.setup_window.destroy()
         self.root.after(100, self.root.destroy)
 
