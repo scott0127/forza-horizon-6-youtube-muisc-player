@@ -1,0 +1,30 @@
+$ErrorActionPreference = 'Stop'
+
+$installDir = Join-Path $env:LOCALAPPDATA 'Programs\ForzaMusicOverlay'
+$desktopShortcut = Join-Path ([Environment]::GetFolderPath('Desktop')) 'Forza Music Overlay.lnk'
+$startMenu = Join-Path ([Environment]::GetFolderPath('Programs')) 'Forza Music Overlay'
+
+Get-CimInstance Win32_Process |
+    Where-Object {
+        ($_.Name -eq 'ForzaMusicOverlay.exe' -or $_.Name -eq 'python.exe' -or $_.Name -eq 'pythonw.exe') -and
+        $_.CommandLine -and
+        $_.CommandLine.Contains('ForzaMusicOverlay')
+    } |
+    ForEach-Object {
+        Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue
+    }
+
+if (Test-Path -LiteralPath $desktopShortcut) {
+    Remove-Item -LiteralPath $desktopShortcut -Force
+}
+
+if (Test-Path -LiteralPath $startMenu) {
+    Remove-Item -LiteralPath $startMenu -Recurse -Force
+}
+
+if (Test-Path -LiteralPath $installDir) {
+    Remove-Item -LiteralPath $installDir -Recurse -Force
+}
+
+Write-Host 'Forza Music Overlay uninstalled.'
+Write-Host 'User settings were kept in %LOCALAPPDATA%\ForzaMusicOverlay.'
