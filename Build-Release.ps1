@@ -7,7 +7,12 @@ Set-Location $scriptDir
 
 $releaseRoot = Join-Path $scriptDir 'release'
 $packageDir = Join-Path $releaseRoot 'ForzaMusicOverlay'
-$zipPath = Join-Path $releaseRoot 'ForzaMusicOverlay.zip'
+$versionMatch = Select-String -Path '.\forza_music_overlay.py' -Pattern '^APP_VERSION\s*=\s*"([^"]+)"' | Select-Object -First 1
+if (-not $versionMatch) {
+    throw 'APP_VERSION was not found in forza_music_overlay.py.'
+}
+$appVersion = $versionMatch.Matches[0].Groups[1].Value
+$zipPath = Join-Path $releaseRoot "ForzaMusicOverlay-v$appVersion.zip"
 
 if (Test-Path -LiteralPath $packageDir) {
     Remove-Item -LiteralPath $packageDir -Recurse -Force

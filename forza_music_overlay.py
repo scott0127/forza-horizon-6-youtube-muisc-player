@@ -29,14 +29,33 @@ else:
     PIL_IMPORT_ERROR = None
 
 
-APP_TITLE = "Forza Music Overlay"
+APP_TITLE = "Forza 音樂懸浮播放器"
+APP_VERSION = "1.1.0"
 YOUTUBE_MUSIC_URL = "https://music.youtube.com"
+SPOTIFY_URL = "https://open.spotify.com"
+SUPPORTED_MUSIC_LABEL = "YouTube Music / Spotify"
 APP_DIR = Path(__file__).resolve().parent
 APP_DATA_DIR = Path(os.environ.get("LOCALAPPDATA", str(APP_DIR))) / "ForzaMusicOverlay"
 SETTINGS_PATH = APP_DATA_DIR / "settings.json"
 DEFAULT_SETTINGS = {
     "overlay_x": 24,
     "overlay_y": 24,
+    "music_service": "youtube",
+}
+
+MUSIC_SERVICES = {
+    "youtube": {
+        "display": "YouTube Music",
+        "overlay": "YOUTUBE MUSIC",
+        "accent": "#ff0033",
+        "url": YOUTUBE_MUSIC_URL,
+    },
+    "spotify": {
+        "display": "Spotify",
+        "overlay": "SPOTIFY",
+        "accent": "#1ed760",
+        "url": SPOTIFY_URL,
+    },
 }
 
 
@@ -182,7 +201,7 @@ def apply_overlay_window_style(window: tk.Toplevel) -> None:
     hwnd = window.winfo_id()
     style = GetWindowLong(hwnd, Win32.GWL_EXSTYLE)
     # Tk child controls can render as a black rectangle on Windows when the
-    # same toplevel is both layered and click-through. Keep the overlay visible
+    # same toplevel is both layered and click-through. Keep the player visible
     # first; click-through can be added later as an opt-in mode.
     style &= ~Win32.WS_EX_LAYERED
     style &= ~Win32.WS_EX_TRANSPARENT
@@ -513,14 +532,19 @@ def save_settings(settings: dict) -> None:
     )
 
 
-def looks_like_youtube_music(track: TrackInfo) -> bool:
+def normalize_music_service(value: str | None) -> str:
+    return "spotify" if value == "spotify" else "youtube"
+
+
+def looks_like_supported_music(track: TrackInfo) -> bool:
     if track.error or track.is_empty:
         return False
 
     app_id = (track.app_id or "").lower()
+    spotify_source = "spotify" in app_id
     browser_source = any(source in app_id for source in ("chrome", "edge", "youtube"))
     has_media_metadata = bool(track.title and (track.artist or track.duration_seconds > 0))
-    return browser_source and has_media_metadata
+    return (spotify_source or browser_source) and has_media_metadata
 
 
 class OverlayUI:
@@ -548,6 +572,8 @@ class OverlayUI:
         self.gamepad_thread: GamepadThread | None = None
         self.setup_window: tk.Toplevel | None = None
         self.setup_status_var: tk.StringVar | None = None
+        self.service_text: tk.StringVar | None = None
+        self.service_status_label: tk.Label | None = None
 
         self.configure_root()
         self.build_control_panel()
@@ -555,32 +581,39 @@ class OverlayUI:
         self.start_threads()
         self.root.after(150, self.process_queue)
         self.root.after(250, self.tick_progress)
-        self.root.after(600, self.enforce_youtube_music_setup)
+        self.root.after(600, self.enforce_music_setup)
 
         if overlay_only:
             self.root.withdraw()
 
     def configure_root(self) -> None:
-        self.root.title(APP_TITLE)
-        self.root.geometry("590x650")
-        self.root.minsize(540, 580)
+        self.root.title(f"{APP_TITLE} {APP_VERSION}")
+        self.root.geometry("640x720")
+        self.root.minsize(560, 620)
         self.root.protocol("WM_DELETE_WINDOW", self.quit)
-        self.root.configure(bg="#0f0f10")
+        self.root.configure(bg="#0b0d10")
 
     def build_control_panel(self) -> None:
-        header_font = ("Microsoft JhengHei UI", 20, "bold")
+        header_font = ("Microsoft JhengHei UI", 22, "bold")
+        section_font = ("Microsoft JhengHei UI", 11, "bold")
         body_font = ("Microsoft JhengHei UI", 10)
         button_font = ("Microsoft JhengHei UI", 10, "bold")
+        page_bg = "#0d0d0f"
+        panel_bg = "#171719"
+        inner_bg = "#222226"
+        border = "#303036"
+        text = "#f8fafc"
+        muted = "#a7a7ad"
 
-        outer = tk.Frame(self.root, bg="#0f0f10")
+        outer = tk.Frame(self.root, bg=page_bg)
         outer.pack(fill="both", expand=True)
 
-        scrollbar = tk.Scrollbar(outer, orient="vertical")
+        scrollbar = tk.Scrollbar(outer, orient="vertical", width=14)
         scrollbar.pack(side="right", fill="y")
 
         self.control_canvas = tk.Canvas(
             outer,
-            bg="#0f0f10",
+            bg=page_bg,
             bd=0,
             highlightthickness=0,
             yscrollcommand=scrollbar.set,
@@ -588,7 +621,7 @@ class OverlayUI:
         self.control_canvas.pack(side="left", fill="both", expand=True)
         scrollbar.configure(command=self.control_canvas.yview)
 
-        wrapper = tk.Frame(self.control_canvas, bg="#0f0f10", padx=20, pady=20)
+        wrapper = tk.Frame(self.control_canvas, bg=page_bg, padx=22, pady=20)
         wrapper_window = self.control_canvas.create_window((0, 0), window=wrapper, anchor="nw")
 
         def update_scroll_region(_event=None) -> None:
@@ -605,98 +638,219 @@ class OverlayUI:
         self.control_canvas.bind("<Configure>", resize_scroll_content)
         self.root.bind_all("<MouseWheel>", on_mousewheel)
 
-        tk.Label(
-            wrapper,
-            text="Forza Music Overlay",
-            font=header_font,
-            fg="#ffffff",
-            bg="#0f0f10",
-            anchor="w",
-        ).pack(fill="x")
+        def make_section(title: str, accent: str = "#3f3f46") -> tk.Frame:
+            section = tk.Frame(
+                wrapper,
+                bg=panel_bg,
+                highlightbackground=border,
+                highlightthickness=1,
+            )
+            section.pack(fill="x", pady=(0, 14))
+
+            tk.Frame(section, bg=accent, height=3).pack(fill="x")
+
+            body = tk.Frame(section, bg=panel_bg, padx=16, pady=14)
+            body.pack(fill="x")
+
+            tk.Label(
+                body,
+                text=title,
+                font=section_font,
+                fg=text,
+                bg=panel_bg,
+                anchor="w",
+            ).pack(fill="x", pady=(0, 12))
+            return body
+
+        def make_button(
+            parent: tk.Misc,
+            label: str,
+            command,
+            bg: str = "#242a35",
+            fg: str = text,
+            active_bg: str = "#323a48",
+            height: int = 2,
+        ) -> tk.Button:
+            return tk.Button(
+                parent,
+                text=label,
+                command=command,
+                font=button_font,
+                bg=bg,
+                fg=fg,
+                activebackground=active_bg,
+                activeforeground=fg,
+                relief="flat",
+                bd=0,
+                padx=12,
+                pady=8,
+                height=height,
+                width=1,
+                cursor="hand2",
+            )
+
+        header = tk.Frame(wrapper, bg=page_bg)
+        header.pack(fill="x", pady=(0, 16))
+
+        title_row = tk.Frame(header, bg=page_bg)
+        title_row.pack(fill="x")
 
         tk.Label(
-            wrapper,
-            text="先在瀏覽器登入並播放 YouTube Music，再進 Forza。Overlay 只讀取 Windows 目前媒體資訊，不會切換視窗。",
+            title_row,
+            text=APP_TITLE,
+            font=header_font,
+            fg=text,
+            bg=page_bg,
+            anchor="w",
+        ).pack(side="left", fill="x", expand=True)
+
+        tk.Label(
+            title_row,
+            text=f"v{APP_VERSION}",
+            font=("Segoe UI", 9, "bold"),
+            fg="#cbd5e1",
+            bg="#1f2937",
+            padx=10,
+            pady=4,
+        ).pack(side="right", padx=(12, 0))
+
+        guide = tk.Frame(header, bg="#151515", highlightbackground="#292929", highlightthickness=1)
+        guide.pack(fill="x", pady=(10, 0))
+        tk.Label(
+            guide,
+            text=f"先開啟並播放 {SUPPORTED_MUSIC_LABEL}，再進 Forza。懸浮播放器只讀取 Windows 目前媒體資訊，不會切換視窗。",
             font=body_font,
-            fg="#b3b3b3",
-            bg="#0f0f10",
+            fg=muted,
+            bg="#151515",
             anchor="w",
             justify="left",
-            wraplength=500,
+            wraplength=540,
+            padx=14,
             pady=10,
         ).pack(fill="x")
 
-        self.status_text = tk.StringVar(value="正在等待媒體資訊…")
-        status = tk.Label(
-            wrapper,
-            textvariable=self.status_text,
-            font=("Microsoft JhengHei UI", 11, "bold"),
+        service_section = make_section("1. 選擇音樂來源", "#ff2d55")
+        tk.Label(
+            service_section,
+            text="按哪個服務，就會開啟對應網站，並自動套用紅色或綠色主題。",
+            font=body_font,
+            fg=muted,
+            bg=panel_bg,
+            anchor="w",
+            justify="left",
+            wraplength=520,
+        ).pack(fill="x", pady=(0, 10))
+
+        service_buttons = tk.Frame(service_section, bg=panel_bg)
+        service_buttons.pack(fill="x")
+        make_button(
+            service_buttons,
+            "開啟 YouTube Music",
+            self.open_youtube_music,
+            bg="#ff0033",
             fg="#ffffff",
-            bg="#1f1f1f",
-            padx=16,
-            pady=16,
+            active_bg="#d6002b",
+            height=2,
+        ).grid(row=0, column=0, sticky="nsew", padx=(0, 7), ipady=2)
+        make_button(
+            service_buttons,
+            "開啟 Spotify",
+            self.open_spotify,
+            bg="#1ed760",
+            fg="#07110b",
+            active_bg="#19b957",
+            height=2,
+        ).grid(row=0, column=1, sticky="nsew", padx=(7, 0), ipady=2)
+        service_buttons.columnconfigure(0, weight=1, uniform="service")
+        service_buttons.columnconfigure(1, weight=1, uniform="service")
+        service_buttons.rowconfigure(0, weight=1)
+
+        self.service_text = tk.StringVar(value=self.get_music_service_status())
+        self.service_status_label = tk.Label(
+            service_section,
+            textvariable=self.service_text,
+            font=("Microsoft JhengHei UI", 9, "bold"),
+            fg=self.get_music_service_theme()[1],
+            bg=inner_bg,
+            padx=14,
+            pady=10,
             justify="left",
             anchor="w",
         )
-        status.pack(fill="x", pady=(0, 14))
+        self.service_status_label.pack(fill="x", pady=(12, 0))
+
+        now_section = make_section("2. 目前播放", "#1ed760")
+        self.status_text = tk.StringVar(value="正在等待媒體資訊…")
+        status = tk.Label(
+            now_section,
+            textvariable=self.status_text,
+            font=("Microsoft JhengHei UI", 10, "bold"),
+            fg=text,
+            bg=inner_bg,
+            padx=14,
+            pady=14,
+            justify="left",
+            anchor="w",
+            wraplength=520,
+        )
+        status.pack(fill="x")
 
         self.gamepad_text = tk.StringVar(value="手把控制：正在偵測控制器…")
         gamepad_status = tk.Label(
-            wrapper,
+            now_section,
             textvariable=self.gamepad_text,
             font=("Microsoft JhengHei UI", 9, "bold"),
             fg="#1ed760",
-            bg="#181818",
-            padx=16,
-            pady=10,
+            bg="#111f17",
+            padx=14,
+            pady=9,
             justify="left",
             anchor="w",
         )
-        gamepad_status.pack(fill="x", pady=(0, 14))
+        gamepad_status.pack(fill="x", pady=(10, 0))
 
-        actions = tk.Frame(wrapper, bg="#0f0f10")
+        control_section = make_section("3. 懸浮播放器控制", "#60a5fa")
+        actions = tk.Frame(control_section, bg=panel_bg)
         actions.pack(fill="x")
 
         buttons = [
-            ("開啟 YouTube Music", self.open_youtube_music),
             ("最小化控制台", self.hide_control_panel),
-            ("顯示 / 隱藏 Overlay", self.toggle_overlay),
-            ("調整 Overlay 位置", self.toggle_position_mode),
-            ("儲存 Overlay 位置", self.save_overlay_position),
+            ("顯示 / 隱藏懸浮播放器", self.toggle_overlay),
+            ("調整顯示位置", self.toggle_position_mode),
+            ("儲存目前位置", self.save_overlay_position),
             ("退出程式", self.quit),
         ]
 
         for index, (label, command) in enumerate(buttons):
-            button = tk.Button(
+            is_quit = label == "退出程式"
+            button = make_button(
                 actions,
-                text=label,
-                command=command,
-                font=button_font,
-                bg="#242424",
-                fg="#ffffff",
-                activebackground="#3a3a3a",
-                activeforeground="#ffffff",
-                relief="solid",
-                bd=1,
-                padx=10,
-                pady=9,
+                label,
+                command,
+                bg="#3a1f25" if is_quit else "#242a35",
+                fg="#fecdd3" if is_quit else text,
+                active_bg="#4c2630" if is_quit else "#323a48",
+                height=2,
             )
-            button.grid(row=index // 2, column=index % 2, sticky="ew", padx=5, pady=5)
+            if is_quit:
+                button.grid(row=index // 2, column=0, columnspan=2, sticky="ew", padx=5, pady=5)
+            else:
+                button.grid(row=index // 2, column=index % 2, sticky="ew", padx=5, pady=5)
 
-        actions.columnconfigure(0, weight=1)
-        actions.columnconfigure(1, weight=1)
+        actions.columnconfigure(0, weight=1, uniform="actions")
+        actions.columnconfigure(1, weight=1, uniform="actions")
 
+        hotkey_section = make_section("遊戲中快捷鍵", "#a78bfa")
         hotkeys = (
-            "遊戲中快捷鍵\n"
             "Ctrl+Alt+Space    播放 / 暫停\n"
             "Ctrl+Alt+Right    下一首\n"
             "Ctrl+Alt+Left     上一首\n"
             "Ctrl+Alt+Up       音量加\n"
             "Ctrl+Alt+Down     音量減\n"
             "Ctrl+Alt+End      靜音\n"
-            "Ctrl+Alt+Home     顯示 / 隱藏 overlay\n"
+            "Ctrl+Alt+Home     顯示 / 隱藏懸浮播放器\n"
             "Ctrl+Alt+H        顯示 / 隱藏控制台\n"
-            "Ctrl+Alt+P        調整 overlay 位置\n\n"
+            "Ctrl+Alt+P        調整懸浮播放器位置\n"
             "Ctrl+Alt+Q        退出程式\n\n"
             "手把組合鍵\n"
             "LB + A            播放 / 暫停\n"
@@ -704,26 +858,24 @@ class OverlayUI:
             "LB + X            上一首"
         )
         tk.Label(
-            wrapper,
+            hotkey_section,
             text=hotkeys,
             font=("Consolas", 10),
-            fg="#e5e7eb",
-            bg="#181818",
-            padx=14,
-            pady=14,
+            fg="#dbeafe",
+            bg=inner_bg,
+            padx=12,
+            pady=12,
             justify="left",
             anchor="w",
-            relief="solid",
-            bd=1,
-        ).pack(fill="x", pady=(14, 0))
+        ).pack(fill="x")
 
         tk.Label(
             wrapper,
-            text="如果 Forza 使用獨佔全螢幕，overlay 可能無法覆蓋；建議使用無邊框視窗。若 Forza 用系統管理員啟動，本程式也要用系統管理員啟動。",
+            text="如果 Forza 使用獨佔全螢幕，懸浮播放器可能無法覆蓋；建議使用無邊框視窗。若 Forza 用系統管理員啟動，本程式也要用系統管理員啟動。",
             font=("Microsoft JhengHei UI", 9),
-            fg="#9ca3af",
-            bg="#0f0f10",
-            wraplength=500,
+            fg=muted,
+            bg=page_bg,
+            wraplength=540,
             justify="left",
             pady=12,
         ).pack(fill="x")
@@ -768,7 +920,7 @@ class OverlayUI:
         )
         self.source_dot.pack(side="left")
 
-        self.source_var = tk.StringVar(value="YOUTUBE MUSIC")
+        self.source_var = tk.StringVar(value="MUSIC")
         self.source_label = tk.Label(
             top_row,
             textvariable=self.source_var,
@@ -788,7 +940,7 @@ class OverlayUI:
         )
         self.overlay_status.pack(side="right")
 
-        self.title_var = tk.StringVar(value="等待 YouTube Music…")
+        self.title_var = tk.StringVar(value="等待音樂播放…")
         self.title_label = tk.Label(
             self.overlay_card,
             textvariable=self.title_var,
@@ -876,25 +1028,47 @@ class OverlayUI:
     def run_media_worker(self) -> None:
         asyncio.run(media_poll_loop(self.output, self.stop_event))
 
-    def check_youtube_music_ready(self) -> tuple[bool, str]:
+    def get_music_service(self) -> str:
+        return normalize_music_service(str(self.settings.get("music_service", "youtube")))
+
+    def get_music_service_theme(self) -> tuple[str, str, str]:
+        service = self.get_music_service()
+        config = MUSIC_SERVICES[service]
+        return config["overlay"], config["accent"], config["display"]
+
+    def get_music_service_status(self) -> str:
+        _overlay, _accent, display = self.get_music_service_theme()
+        return f"目前瀏覽器來源：{display} 主題（按上方服務按鈕可切換）"
+
+    def set_music_service(self, service: str) -> None:
+        self.settings["music_service"] = normalize_music_service(service)
+        save_settings(self.settings)
+
+        if self.service_text is not None:
+            self.service_text.set(self.get_music_service_status())
+        if self.service_status_label is not None:
+            self.service_status_label.configure(fg=self.get_music_service_theme()[1])
+        self.update_track(self.current_track)
+
+    def check_music_ready(self) -> tuple[bool, str]:
         try:
             track = asyncio.run(get_current_track(read_artwork=False))
         except Exception as exc:
             return False, f"無法讀取 Windows 媒體資訊：{exc}"
 
-        if looks_like_youtube_music(track):
+        if looks_like_supported_music(track):
             return True, f"已偵測到：{track.title} - {track.artist or track.app_id}"
 
         if track.status == "NO_SESSION" or track.is_empty:
-            return False, "尚未偵測到 YouTube Music 播放。請登入後播放任一首歌曲。"
+            return False, f"尚未偵測到 {SUPPORTED_MUSIC_LABEL} 播放。請登入後播放任一首歌曲。"
 
         return False, (
-            "目前偵測到其他媒體來源，請切到 YouTube Music 並開始播放。\n"
+            f"目前偵測到其他媒體來源，請切到 {SUPPORTED_MUSIC_LABEL} 並開始播放。\n"
             f"偵測結果：{track.app_id or '未知來源'} / {track.title or '無標題'}"
         )
 
-    def enforce_youtube_music_setup(self) -> None:
-        ready, message = self.check_youtube_music_ready()
+    def enforce_music_setup(self) -> None:
+        ready, message = self.check_music_ready()
         if ready:
             return
         self.show_setup_window(message)
@@ -910,8 +1084,8 @@ class OverlayUI:
 
         setup = tk.Toplevel(self.root)
         self.setup_window = setup
-        setup.title("設定 YouTube Music")
-        setup.geometry("520x380")
+        setup.title(f"設定 {APP_TITLE}")
+        setup.geometry("580x440")
         setup.resizable(False, False)
         setup.configure(bg="#121212")
         setup.transient(self.root)
@@ -923,7 +1097,7 @@ class OverlayUI:
 
         tk.Label(
             content,
-            text="先完成 YouTube Music 設定",
+            text="先選擇音樂服務",
             font=("Microsoft JhengHei UI", 18, "bold"),
             fg="#ffffff",
             bg="#121212",
@@ -933,8 +1107,8 @@ class OverlayUI:
         tk.Label(
             content,
             text=(
-                "這個工具不會要求你輸入 Google 密碼。\n"
-                "請在官方 YouTube Music 網頁登入，播放任一首歌曲後，再回來按重新檢查。"
+                "這個工具不會要求你輸入帳號密碼。\n"
+                "請在官方音樂服務登入，播放任一首歌曲後，再回來按重新檢查。"
             ),
             font=("Microsoft JhengHei UI", 10),
             fg="#b3b3b3",
@@ -959,9 +1133,9 @@ class OverlayUI:
         ).pack(fill="x", pady=(0, 16))
 
         steps = (
-            "1. 按下「開啟 YouTube Music」。\n"
-            "2. 在瀏覽器登入 Google / YouTube Music。\n"
-            "3. 播放任一首歌曲，讓底部播放器開始跑。\n"
+            "1. 按下「開啟 YouTube Music」或「開啟 Spotify」。\n"
+            "2. 在瀏覽器或 Spotify 桌面版登入。\n"
+            "3. 播放任一首歌曲，讓播放器開始跑。\n"
             "4. 回到這裡按「我已登入並播放，重新檢查」。"
         )
         tk.Label(
@@ -995,8 +1169,22 @@ class OverlayUI:
 
         tk.Button(
             actions,
+            text="開啟 Spotify",
+            command=self.open_spotify,
+            font=("Microsoft JhengHei UI", 10, "bold"),
+            bg="#1ed760",
+            fg="#101010",
+            activebackground="#19b957",
+            activeforeground="#101010",
+            relief="flat",
+            padx=12,
+            pady=10,
+        ).pack(side="left", fill="x", expand=True, padx=(0, 8))
+
+        tk.Button(
+            content,
             text="我已登入並播放，重新檢查",
-            command=self.recheck_youtube_music_setup,
+            command=self.recheck_music_setup,
             font=("Microsoft JhengHei UI", 10, "bold"),
             bg="#242424",
             fg="#ffffff",
@@ -1005,7 +1193,7 @@ class OverlayUI:
             relief="flat",
             padx=12,
             pady=10,
-        ).pack(side="left", fill="x", expand=True, padx=(8, 0))
+        ).pack(fill="x", pady=(12, 0))
 
         tk.Button(
             content,
@@ -1020,8 +1208,8 @@ class OverlayUI:
             pady=8,
         ).pack(fill="x", pady=(12, 0))
 
-    def recheck_youtube_music_setup(self) -> None:
-        ready, message = self.check_youtube_music_ready()
+    def recheck_music_setup(self) -> None:
+        ready, message = self.check_music_ready()
         if not ready:
             self.setup_status_var.set(message)
             return
@@ -1058,8 +1246,12 @@ class OverlayUI:
         if "spotify" in app_id:
             return "SPOTIFY", "#1ed760"
 
-        if "chrome" in app_id or "edge" in app_id or "youtube" in app_id:
+        if "youtube" in app_id:
             return "YOUTUBE MUSIC", "#ff0033"
+
+        if "chrome" in app_id or "edge" in app_id:
+            label, accent, _display = self.get_music_service_theme()
+            return label, accent
 
         if track.app_id:
             return track.app_id.upper(), "#5eead4"
@@ -1107,8 +1299,8 @@ class OverlayUI:
             artist = track.error
             status = "ERROR"
         elif track.is_empty:
-            title = "等待 YouTube Music…"
-            artist = "請先在瀏覽器登入並播放音樂"
+            title = "等待音樂播放…"
+            artist = f"請先登入並播放 {SUPPORTED_MUSIC_LABEL}"
             status = "NO MEDIA"
         else:
             title = track.title or "未知歌曲"
@@ -1158,7 +1350,12 @@ class OverlayUI:
             self.quit()
 
     def open_youtube_music(self) -> None:
+        self.set_music_service("youtube")
         webbrowser.open(YOUTUBE_MUSIC_URL)
+
+    def open_spotify(self) -> None:
+        self.set_music_service("spotify")
+        webbrowser.open(SPOTIFY_URL)
 
     def toggle_overlay(self) -> None:
         self.overlay_visible = not self.overlay_visible
@@ -1174,8 +1371,8 @@ class OverlayUI:
             self.overlay_visible = True
             self.overlay.deiconify()
             self.overlay_card.configure(highlightbackground="#ff0033", highlightthickness=2)
-            self.source_var.set("DRAG TO MOVE")
-            self.status_var.set("POSITION")
+            self.source_var.set("移動位置")
+            self.status_var.set("拖曳後放開")
         else:
             self.overlay_card.configure(highlightbackground="#2a2a2a", highlightthickness=1)
             self.save_overlay_position(show_message=False)
@@ -1206,7 +1403,7 @@ class OverlayUI:
         self.settings["overlay_y"] = int(self.overlay.winfo_y())
         save_settings(self.settings)
         if show_message:
-            messagebox.showinfo(APP_TITLE, "Overlay 位置已儲存。")
+            messagebox.showinfo(APP_TITLE, "懸浮播放器位置已儲存。")
 
     def hide_control_panel(self) -> None:
         self.root.iconify()
@@ -1259,7 +1456,7 @@ def run_check() -> int:
     for warning in warnings:
         print(f"WARN: {warning}")
 
-    print("OK: Python overlay dependencies are available.")
+    print("OK: Python floating player dependencies are available.")
     return 0
 
 
@@ -1331,7 +1528,7 @@ def main() -> int:
     output: queue.Queue = queue.Queue()
     mutex_handle = acquire_single_instance_mutex()
     if mutex_handle is None:
-        messagebox.showinfo(APP_TITLE, "Forza Music Overlay 已經在執行。")
+        messagebox.showinfo(APP_TITLE, f"{APP_TITLE} 已經在執行。")
         return 0
 
     root = tk.Tk()

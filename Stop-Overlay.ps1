@@ -12,4 +12,4 @@ foreach ($process in $processes) {
     Stop-Process -Id $process.ProcessId -Force
 }
 
-Write-Host "Stopped $($processes.Count) overlay process(es)."
+Write-Host "Stopped $($processes.Count) floating player process(es)."
