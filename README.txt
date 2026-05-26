@@ -96,6 +96,11 @@ LB + X            上一首
 
 輸出檔案會在 release\ForzaMusicOverlay.zip。
 
+授權
+----
+
+本專案採用 MIT License。詳情請見 LICENSE。
+
 
 English Guide
 -------------
@@ -191,3 +196,8 @@ Developer Notes
 5. Run .\Build-Release.ps1 to build the release package.
 
 The output will be release\ForzaMusicOverlay.zip.
+
+License
+-------
+
+This project is licensed under the MIT License. See LICENSE for details.

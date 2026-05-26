@@ -21,6 +21,7 @@ Copy-Item -LiteralPath '.\release-assets\Uninstall-App.ps1' -Destination $packag
 Copy-Item -LiteralPath '.\release-assets\Uninstall-App.bat' -Destination $packageDir -Force
 Copy-Item -LiteralPath '.\README.md' -Destination (Join-Path $packageDir 'README.md') -Force
 Copy-Item -LiteralPath '.\README.txt' -Destination (Join-Path $packageDir 'README.txt') -Force
+Copy-Item -LiteralPath '.\LICENSE' -Destination (Join-Path $packageDir 'LICENSE') -Force
 Copy-Item -LiteralPath '.\Install-Guide.png' -Destination (Join-Path $packageDir 'Install-Guide.png') -Force
 
 if (Test-Path -LiteralPath $zipPath) {

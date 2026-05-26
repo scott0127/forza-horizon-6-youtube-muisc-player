@@ -93,6 +93,10 @@ Forza Music Overlay 是一個 Windows 小工具，可以在玩 Forza 時顯示 Y
 
 輸出檔案會在 `release\ForzaMusicOverlay.zip`。
 
+### 授權
+
+本專案採用 MIT License。詳情請見 `LICENSE`。
+
 ## English Guide
 
 Forza Music Overlay is a small Windows helper that shows the currently playing YouTube Music track while you play Forza. It also lets you control play, pause, next track, previous track, and volume with global hotkeys.
@@ -185,3 +189,7 @@ Double-click `Uninstall-App.bat` in the installed folder to remove the desktop a
 ```
 
 The output will be `release\ForzaMusicOverlay.zip`.
+
+### License
+
+This project is licensed under the MIT License. See `LICENSE` for details.
