@@ -237,62 +237,79 @@ async def read_thumbnail_bytes(thumbnail) -> bytes | None:
     from winsdk.windows.storage.streams import DataReader
 
     try:
-        stream = await asyncio.wait_for(thumbnail.open_read_async(), timeout=1.8)
+        stream = await thumbnail.open_read_async()
         if stream is None or stream.size == 0:
             return None
 
         reader = DataReader(stream.get_input_stream_at(0))
-        await asyncio.wait_for(reader.load_async(stream.size), timeout=1.8)
+        await reader.load_async(stream.size)
         return bytes(reader.read_buffer(stream.size))
     except Exception:
         return None
 
 
 async def get_current_track(read_artwork: bool = True) -> TrackInfo:
+    from winsdk.windows.media.control import (
+        GlobalSystemMediaTransportControlsSessionManager as MediaManager,
+    )
+
     try:
-        from winsdk.windows.media.control import (
-            GlobalSystemMediaTransportControlsSessionManager as MediaManager,
-        )
+        manager = await MediaManager.request_async()
+    except Exception as exc:
+        return TrackInfo(status="ERROR", error=f"SMTC manager: {exc}")
 
-        manager = await asyncio.wait_for(MediaManager.request_async(), timeout=1.8)
-        session = manager.get_current_session()
-        if session is None:
-            return TrackInfo(status="NO_SESSION")
+    session = manager.get_current_session()
+    if session is None:
+        return TrackInfo(status="NO_SESSION")
 
-        props = await asyncio.wait_for(session.try_get_media_properties_async(), timeout=1.8)
+    try:
+        props = await session.try_get_media_properties_async()
+    except Exception as exc:
+        return TrackInfo(status="ERROR", error=f"media props: {exc}")
+
+    try:
         playback = session.get_playback_info()
         status = getattr(playback.playback_status, "name", str(playback.playback_status))
+    except Exception:
+        status = "UNKNOWN"
+
+    try:
         timeline = session.get_timeline_properties()
         start_seconds = timeline.start_time.total_seconds()
         end_seconds = timeline.end_time.total_seconds()
         position_seconds = max(0.0, timeline.position.total_seconds() - start_seconds)
         duration_seconds = max(0.0, end_seconds - start_seconds)
         timeline_updated_at = timeline.last_updated_time.timestamp()
-        playback_rate = getattr(playback, "playback_rate", 1.0) or 1.0
-        
-        artwork_bytes = None
-        if read_artwork and props.thumbnail:
-            try:
-                artwork_bytes = await asyncio.wait_for(read_thumbnail_bytes(props.thumbnail), timeout=2.2)
-            except Exception:
-                pass
+    except Exception:
+        position_seconds = 0.0
+        duration_seconds = 0.0
+        timeline_updated_at = 0.0
 
-        return TrackInfo(
-            title=(props.title or "").strip(),
-            artist=(props.artist or "").strip(),
-            album=(props.album_title or "").strip(),
-            app_id=(session.source_app_user_model_id or "").strip(),
-            status=status,
-            artwork_bytes=artwork_bytes,
-            position_seconds=position_seconds,
-            duration_seconds=duration_seconds,
-            timeline_updated_at=timeline_updated_at,
-            playback_rate=float(playback_rate),
-        )
-    except asyncio.TimeoutError:
-        return TrackInfo(status="ERROR", error="讀取 Windows 媒體逾時")
-    except Exception as exc:
-        return TrackInfo(status="ERROR", error=str(exc))
+    playback_rate = 1.0
+    try:
+        playback_rate = float(getattr(playback, "playback_rate", 1.0) or 1.0)
+    except Exception:
+        pass
+
+    artwork_bytes = None
+    if read_artwork:
+        try:
+            artwork_bytes = await read_thumbnail_bytes(props.thumbnail)
+        except Exception:
+            pass
+
+    return TrackInfo(
+        title=(props.title or "").strip(),
+        artist=(props.artist or "").strip(),
+        album=(props.album_title or "").strip(),
+        app_id=(session.source_app_user_model_id or "").strip(),
+        status=status,
+        artwork_bytes=artwork_bytes,
+        position_seconds=position_seconds,
+        duration_seconds=duration_seconds,
+        timeline_updated_at=timeline_updated_at,
+        playback_rate=playback_rate,
+    )
 
 
 def get_artwork_key(track: TrackInfo) -> str:
@@ -442,7 +459,10 @@ class HotkeyThread(threading.Thread):
                 hotkey_id = int(msg.wParam)
                 command, _virtual_key, media_key = self.HOTKEYS.get(hotkey_id, ("", 0, None))
                 if media_key is not None:
-                    send_media_key(media_key)
+                    try:
+                        send_media_key(media_key)
+                    except Exception:
+                        pass
                 elif command:
                     self.output.put(("command", command))
 
@@ -490,136 +510,166 @@ class GamepadThread(threading.Thread):
         pressed_combos: set[tuple[int, str]] = set()
         joysticks = []
         last_count = -1
-        last_pressed_inputs = set()
+        last_pressed_inputs: set = set()
+        consecutive_errors = 0
+        MAX_CONSECUTIVE_ERRORS = 8
 
         try:
             pygame.init()
             pygame.joystick.init()
 
             while not self.stop_event.is_set():
-                pygame.event.pump()
-                count = pygame.joystick.get_count()
+                try:
+                    pygame.event.pump()
+                    count = pygame.joystick.get_count()
 
-                if count != last_count:
-                    joysticks = []
-                    for index in range(count):
-                        joystick = pygame.joystick.Joystick(index)
-                        joystick.init()
-                        joysticks.append(joystick)
+                    if count != last_count:
+                        joysticks = []
+                        for index in range(count):
+                            joystick = pygame.joystick.Joystick(index)
+                            joystick.init()
+                            joysticks.append(joystick)
 
-                    if count:
-                        info_parts = []
-                        for joystick in joysticks:
-                            name = joystick.get_name()
-                            n_buttons = joystick.get_numbuttons()
-                            n_hats = joystick.get_numhats()
-                            info_parts.append(f"{name} (按鈕:{n_buttons} hat:{n_hats})")
-                        self.output.put(("gamepad_status", f"手把控制已啟用：{', '.join(info_parts)}"))
-                    else:
-                        self.output.put(("gamepad_status", "手把控制：未偵測到控制器"))
+                        if count:
+                            info_parts = []
+                            for joystick in joysticks:
+                                name = joystick.get_name()
+                                n_buttons = joystick.get_numbuttons()
+                                n_hats = joystick.get_numhats()
+                                info_parts.append(f"{name} (按鈕:{n_buttons} hat:{n_hats})")
+                            self.output.put(("gamepad_status", f"手把控制已啟用：{', '.join(info_parts)}"))
+                        else:
+                            self.output.put(("gamepad_status", "手把控制：未偵測到控制器"))
 
-                    last_count = count
+                        last_count = count
+                        pressed_combos.clear()
 
-                pressed_this_tick = set()
-                for joy_index, joystick in enumerate(joysticks):
-                    button_count = joystick.get_numbuttons()
-                    hat_count = joystick.get_numhats()
+                    pressed_this_tick: set = set()
+                    for joy_index, joystick in enumerate(joysticks):
+                        try:
+                            button_count = joystick.get_numbuttons()
+                            hat_count = joystick.get_numhats()
+                        except Exception:
+                            continue
 
-                    # 1. 偵測 L3
-                    for btn in self.L3_BUTTONS:
-                        if btn < button_count and joystick.get_button(btn):
-                            pressed_this_tick.add("L3")
-                            break
+                        # 1. 偵測 L3
+                        for btn in self.L3_BUTTONS:
+                            if btn < button_count and joystick.get_button(btn):
+                                pressed_this_tick.add("L3")
+                                break
 
-                    # 2. 偵測 A
-                    if 0 < button_count and joystick.get_button(0):
-                        pressed_this_tick.add("A")
+                        # 2. 偵測 A
+                        if 0 < button_count and joystick.get_button(0):
+                            pressed_this_tick.add("A")
 
-                    # 3. 偵測 B
-                    if 1 < button_count and joystick.get_button(1):
-                        pressed_this_tick.add("B")
+                        # 3. 偵測 B
+                        if 1 < button_count and joystick.get_button(1):
+                            pressed_this_tick.add("B")
 
-                    # 4. 偵測 X
-                    if 2 < button_count and joystick.get_button(2):
-                        pressed_this_tick.add("X")
+                        # 4. 偵測 X
+                        if 2 < button_count and joystick.get_button(2):
+                            pressed_this_tick.add("X")
 
-                    # 5. 偵測 UP
-                    is_up = False
-                    for hat_index in range(hat_count):
-                        if joystick.get_hat(hat_index)[1] == 1:
-                            is_up = True
-                            break
-                    if not is_up and hat_count == 0:
-                        if 11 < button_count and joystick.get_button(11):
-                            is_up = True
-                    if is_up:
-                        pressed_this_tick.add("UP")
+                        # 5. 偵測 UP
+                        is_up = False
+                        for hat_index in range(hat_count):
+                            if joystick.get_hat(hat_index)[1] == 1:
+                                is_up = True
+                                break
+                        if not is_up and hat_count == 0:
+                            if 11 < button_count and joystick.get_button(11):
+                                is_up = True
+                        if is_up:
+                            pressed_this_tick.add("UP")
 
-                    # 6. 偵測 DOWN
-                    is_down = False
-                    for hat_index in range(hat_count):
-                        if joystick.get_hat(hat_index)[1] == -1:
-                            is_down = True
-                            break
-                    if not is_down and hat_count == 0:
-                        if 12 < button_count and joystick.get_button(12):
-                            is_down = True
-                    if is_down:
-                        pressed_this_tick.add("DOWN")
-                    for label, modifier_buttons, action_button, media_key in self.BUTTON_COMBOS:
-                        combo_id = (joy_index, label)
-                        modifier_pressed = any(
-                            btn < button_count and joystick.get_button(btn)
-                            for btn in modifier_buttons
-                        )
-                        is_pressed = (
-                            modifier_pressed
-                            and action_button < button_count
-                            and joystick.get_button(action_button)
-                        )
+                        # 6. 偵測 DOWN
+                        is_down = False
+                        for hat_index in range(hat_count):
+                            if joystick.get_hat(hat_index)[1] == -1:
+                                is_down = True
+                                break
+                        if not is_down and hat_count == 0:
+                            if 12 < button_count and joystick.get_button(12):
+                                is_down = True
+                        if is_down:
+                            pressed_this_tick.add("DOWN")
 
-                        if is_pressed and combo_id not in pressed_combos:
-                            pressed_combos.add(combo_id)
-                            send_media_key(media_key)
-                        elif not is_pressed and combo_id in pressed_combos:
-                            pressed_combos.remove(combo_id)
-
-                    for label, modifier_buttons, hat_value, media_key in self.HAT_COMBOS:
-                        combo_id = (joy_index, label)
-                        modifier_pressed = any(
-                            btn < button_count and joystick.get_button(btn)
-                            for btn in modifier_buttons
-                        )
-
-                        # Xbox 風格：D-Pad 透過 hat 報告
-                        is_hat_pressed = any(
-                            joystick.get_hat(hat_index) == hat_value
-                            for hat_index in range(hat_count)
-                        )
-
-                        # PS 風格：D-Pad 透過 button 報告（fallback）
-                        # 僅在 hat_count == 0 時啟用，避免與 L3 索引 (11) 衝突
-                        is_dpad_button_pressed = False
-                        if hat_count == 0:
-                            is_dpad_button_pressed = any(
+                        for label, modifier_buttons, action_button, media_key in self.BUTTON_COMBOS:
+                            combo_id = (joy_index, label)
+                            modifier_pressed = any(
                                 btn < button_count and joystick.get_button(btn)
-                                for btn in self.PS_DPAD_BUTTONS.get(hat_value, ())
+                                for btn in modifier_buttons
+                            )
+                            is_pressed = (
+                                modifier_pressed
+                                and action_button < button_count
+                                and joystick.get_button(action_button)
                             )
 
-                        is_pressed = (
-                            modifier_pressed
-                            and (is_hat_pressed or is_dpad_button_pressed)
-                        )
+                            if is_pressed and combo_id not in pressed_combos:
+                                pressed_combos.add(combo_id)
+                                try:
+                                    send_media_key(media_key)
+                                except Exception:
+                                    pass
+                            elif not is_pressed and combo_id in pressed_combos:
+                                pressed_combos.discard(combo_id)
 
-                        if is_pressed and combo_id not in pressed_combos:
-                            pressed_combos.add(combo_id)
-                            send_media_key(media_key)
-                        elif not is_pressed and combo_id in pressed_combos:
-                            pressed_combos.remove(combo_id)
+                        for label, modifier_buttons, hat_value, media_key in self.HAT_COMBOS:
+                            combo_id = (joy_index, label)
+                            modifier_pressed = any(
+                                btn < button_count and joystick.get_button(btn)
+                                for btn in modifier_buttons
+                            )
 
-                if pressed_this_tick != last_pressed_inputs:
-                    self.output.put(("gamepad_inputs", list(pressed_this_tick)))
-                    last_pressed_inputs = pressed_this_tick
+                            # Xbox 風格：D-Pad 透過 hat 報告
+                            is_hat_pressed = any(
+                                joystick.get_hat(hat_index) == hat_value
+                                for hat_index in range(hat_count)
+                            )
+
+                            # PS 風格：D-Pad 透過 button 報告（fallback）
+                            # 僅在 hat_count == 0 時啟用，避免與 L3 索引 (11) 衝突
+                            is_dpad_button_pressed = False
+                            if hat_count == 0:
+                                is_dpad_button_pressed = any(
+                                    btn < button_count and joystick.get_button(btn)
+                                    for btn in self.PS_DPAD_BUTTONS.get(hat_value, ())
+                                )
+
+                            is_pressed = (
+                                modifier_pressed
+                                and (is_hat_pressed or is_dpad_button_pressed)
+                            )
+
+                            if is_pressed and combo_id not in pressed_combos:
+                                pressed_combos.add(combo_id)
+                                try:
+                                    send_media_key(media_key)
+                                except Exception:
+                                    pass
+                            elif not is_pressed and combo_id in pressed_combos:
+                                pressed_combos.discard(combo_id)
+
+                    if pressed_this_tick != last_pressed_inputs:
+                        self.output.put(("gamepad_inputs", list(pressed_this_tick)))
+                        last_pressed_inputs = pressed_this_tick
+
+                    consecutive_errors = 0
+
+                except Exception as tick_exc:
+                    consecutive_errors += 1
+                    if consecutive_errors >= MAX_CONSECUTIVE_ERRORS:
+                        self.output.put(("gamepad_status", f"手把控制連續失敗 {consecutive_errors} 次，正在重新初始化：{tick_exc}"))
+                        try:
+                            pygame.joystick.quit()
+                            pygame.joystick.init()
+                        except Exception:
+                            pass
+                        joysticks = []
+                        last_count = -1
+                        pressed_combos.clear()
+                        consecutive_errors = 0
 
                 time.sleep(0.04)
         except Exception as exc:
@@ -1770,7 +1820,10 @@ def handle_backend_command(command: dict, stop_event: threading.Event) -> None:
     }
 
     if command_type in media_keys:
-        send_media_key(media_keys[command_type])
+        try:
+            send_media_key(media_keys[command_type])
+        except Exception:
+            pass
     elif command_type == "open:youtube":
         settings = load_settings()
         settings["music_service"] = "youtube"
