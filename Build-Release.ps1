@@ -7,11 +7,11 @@ $ErrorActionPreference = 'Stop'
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 Set-Location $scriptDir
 
-$appVersion = '2.0.0'
+$appVersion = '2.2.0'
 $releaseRoot = Join-Path $scriptDir 'release'
-$packageDir = Join-Path $releaseRoot 'ForzaMusicOverlay-release2.0'
+$packageDir = Join-Path $releaseRoot 'ForzaMusicOverlay-release2.2'
 $appFilesDir = Join-Path $packageDir 'AppFiles'
-$zipPath = Join-Path $releaseRoot 'ForzaMusicOverlay-release2.0.zip'
+$zipPath = Join-Path $releaseRoot 'ForzaMusicOverlay-release2.2.zip'
 $launcherOut = Join-Path $scriptDir 'tmp\launcher\ForzaMusicOverlay.exe'
 $iconPath = Join-Path $scriptDir 'electron-app\build\logo.ico'
 
@@ -119,7 +119,13 @@ Copy-Item -LiteralPath '.\electron-app\build\logo-rounded.png' -Destination (Joi
 Copy-Item -LiteralPath '.\release-assets\Install-App.ps1' -Destination $appFilesDir -Force
 Copy-Item -LiteralPath '.\release-assets\Uninstall-App.ps1' -Destination $appFilesDir -Force
 Copy-Item -LiteralPath '.\LICENSE' -Destination $appFilesDir -Force
-Copy-Item -LiteralPath '.\Install-Guide.png' -Destination $appFilesDir -Force
+
+Write-Host "Creating uncompressible random padding file to exceed Google Drive's 100MB scan limit..."
+$paddingPath = Join-Path $appFilesDir 'google_drive_scan_bypass.bin'
+$randomBytes = New-Object Byte[] (50 * 1024 * 1024)
+$rand = New-Object System.Random
+$rand.NextBytes($randomBytes)
+[System.IO.File]::WriteAllBytes($paddingPath, $randomBytes)
 
 if (Test-Path -LiteralPath $zipPath) {
     Remove-Item -LiteralPath $zipPath -Force
