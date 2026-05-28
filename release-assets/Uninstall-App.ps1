@@ -1,7 +1,15 @@
 $ErrorActionPreference = 'Stop'
 
 $installDir = Join-Path $env:LOCALAPPDATA 'Programs\ForzaMusicOverlay'
-$appShortcutName = 'Forza 音樂懸浮播放器'
+
+function ConvertFrom-Utf8Base64 {
+    param([string]$Value)
+    return [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($Value))
+}
+
+# Keep this script ASCII-safe for Windows PowerShell 5.1, which may read UTF-8
+# files without a BOM as the system ANSI code page.
+$appShortcutName = ConvertFrom-Utf8Base64 'Rm9yemEg6Z+z5qiC5oe45rWu5pKt5pS+5Zmo'
 $desktopShortcut = Join-Path ([Environment]::GetFolderPath('Desktop')) "$appShortcutName.lnk"
 $legacyDesktopShortcut = Join-Path ([Environment]::GetFolderPath('Desktop')) 'Forza Music Overlay.lnk'
 $startMenu = Join-Path ([Environment]::GetFolderPath('Programs')) $appShortcutName
@@ -9,7 +17,7 @@ $legacyStartMenu = Join-Path ([Environment]::GetFolderPath('Programs')) 'Forza M
 
 Get-CimInstance Win32_Process |
     Where-Object {
-        ($_.Name -eq 'ForzaMusicOverlay.exe' -or $_.Name -eq 'python.exe' -or $_.Name -eq 'pythonw.exe') -and
+        ($_.Name -eq 'ForzaMusicOverlayBackend.exe' -or $_.Name -eq 'ForzaMusicOverlayApp.exe' -or $_.Name -eq 'ForzaMusicOverlay.exe' -or $_.Name -eq 'python.exe' -or $_.Name -eq 'pythonw.exe') -and
         $_.CommandLine -and
         $_.CommandLine.Contains('ForzaMusicOverlay')
     } |

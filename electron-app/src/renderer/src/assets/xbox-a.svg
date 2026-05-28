@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" role="img" aria-label="Xbox A Button">
+  <defs>
+    <!-- Shadow for realistic depth -->
+    <filter id="buttonShadow" x="-10%" y="-10%" width="125%" height="125%">
+      <feDropShadow dx="0" dy="6" stdDeviation="4.5" flood-color="#000000" flood-opacity="0.65"/>
+    </filter>
+
+    <!-- Glossy black sphere gradient -->
+    <radialGradient id="blackSphere" cx="38%" cy="30%" r="68%">
+      <stop offset="0%" stop-color="#3a3d40" />
+      <stop offset="42%" stop-color="#141517" />
+      <stop offset="85%" stop-color="#070809" />
+      <stop offset="100%" stop-color="#000000" />
+    </radialGradient>
+
+    <!-- Edge reflection stroke -->
+    <linearGradient id="glassEdge" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.45" />
+      <stop offset="30%" stop-color="#ffffff" stop-opacity="0.1" />
+      <stop offset="70%" stop-color="#000000" stop-opacity="0.2" />
+      <stop offset="100%" stop-color="#000000" stop-opacity="0.8" />
+    </linearGradient>
+
+    <!-- Linear highlight reflection (the distinct diagonal reflection across Xbox buttons) -->
+    <linearGradient id="diagonalGlare" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.48" />
+      <stop offset="28%" stop-color="#ffffff" stop-opacity="0.08" />
+      <stop offset="48%" stop-color="#ffffff" stop-opacity="0.0" />
+    </linearGradient>
+  </defs>
+
+  <!-- Button Body with Shadow -->
+  <g filter="url(#buttonShadow)">
+    <!-- Base dark outer ring -->
+    <circle cx="50" cy="50" r="46" fill="#000000" stroke="#16181b" stroke-width="1" />
+
+    <!-- Glass Black Sphere -->
+    <circle cx="50" cy="50" r="44" fill="url(#blackSphere)" />
+    
+    <!-- Outer rim shine -->
+    <circle cx="50" cy="50" r="44" fill="none" stroke="url(#glassEdge)" stroke-width="2.2" />
+    
+    <!-- Letter A (Sitting under the glass glare layer) -->
+    <!-- Authentic Xbox green letter color: #4bae4f -->
+    <text x="50" y="66" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="46" font-weight="900" fill="#4bae4f" letter-spacing="-1">A</text>
+    <!-- Soft inner green glow overlay on letter -->
+    <text x="50" y="66" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="46" font-weight="900" fill="#5ad661" fill-opacity="0.25" letter-spacing="-1">A</text>
+
+    <!-- Top Gloss Glare Crescent -->
+    <path d="M12 36 C18 16, 82 16, 88 36 C76 22, 24 22, 12 36 Z" fill="#ffffff" fill-opacity="0.4" />
+    
+    <!-- Diagonal Glass reflection sweep across the face -->
+    <path d="M11 32 L40 8 C20 12, 12 22, 11 32 Z" fill="url(#diagonalGlare)" />
+    
+    <!-- Faint bottom shadow/bounce light -->
+    <ellipse cx="50" cy="84" rx="26" ry="6" fill="#ffffff" fill-opacity="0.06" filter="blur(1px)" />
+  </g>
+</svg>

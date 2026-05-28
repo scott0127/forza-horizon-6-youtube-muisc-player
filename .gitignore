@@ -1,8 +1,15 @@
 .venv/
+.codex/
 build/
 dist/
 release/
 tmp/
+node_modules/
+electron-app/node_modules/
+electron-app/out/
+electron-app/dist/
+electron-app/package-lock.json
+*.tsbuildinfo
 *.spec
 __pycache__/
 *.pyc

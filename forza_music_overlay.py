@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import base64
 import ctypes
 from ctypes import wintypes
 import io
@@ -14,9 +15,13 @@ import sys
 import threading
 import time
 import tkinter as tk
+import warnings
 from dataclasses import dataclass
 from tkinter import messagebox
 import webbrowser
+
+os.environ.setdefault("PYGAME_HIDE_SUPPORT_PROMPT", "1")
+warnings.filterwarnings("ignore", category=UserWarning)
 
 try:
     from PIL import Image, ImageDraw, ImageTk
@@ -30,10 +35,11 @@ else:
 
 
 APP_TITLE = "Forza 音樂懸浮播放器"
-APP_VERSION = "1.1.0"
+APP_VERSION = "2.0.0"
 YOUTUBE_MUSIC_URL = "https://music.youtube.com"
 SPOTIFY_URL = "https://open.spotify.com"
-SUPPORTED_MUSIC_LABEL = "YouTube Music / Spotify"
+APPLE_MUSIC_URL = "https://music.apple.com"
+SUPPORTED_MUSIC_LABEL = "YouTube Music / Spotify / Apple Music"
 APP_DIR = Path(__file__).resolve().parent
 APP_DATA_DIR = Path(os.environ.get("LOCALAPPDATA", str(APP_DIR))) / "ForzaMusicOverlay"
 SETTINGS_PATH = APP_DATA_DIR / "settings.json"
@@ -55,6 +61,12 @@ MUSIC_SERVICES = {
         "overlay": "SPOTIFY",
         "accent": "#1ed760",
         "url": SPOTIFY_URL,
+    },
+    "apple": {
+        "display": "Apple Music",
+        "overlay": "APPLE MUSIC",
+        "accent": "#111111",
+        "url": APPLE_MUSIC_URL,
     },
 }
 
@@ -273,6 +285,33 @@ def get_artwork_key(track: TrackInfo) -> str:
     return "|".join([track.title, track.artist, track.album, track.app_id])
 
 
+def is_probably_browser_app_icon(track: TrackInfo, artwork_bytes: bytes) -> bool:
+    app_id = (track.app_id or "").lower()
+    if not any(browser in app_id for browser in ("chrome", "msedge", "edge", "firefox")):
+        return False
+
+    if not track.title or Image is None:
+        return False
+
+    try:
+        image = Image.open(io.BytesIO(artwork_bytes)).convert("RGBA")
+    except Exception:
+        return False
+
+    width, height = image.size
+    if width <= 0 or height <= 0:
+        return False
+
+    square_ratio = min(width, height) / max(width, height)
+    if square_ratio < 0.92:
+        return False
+
+    alpha = image.getchannel("A")
+    transparent_pixels = sum(1 for value in alpha.getdata() if value < 245)
+    transparent_ratio = transparent_pixels / float(width * height)
+    return transparent_ratio > 0.08
+
+
 async def media_poll_loop(output: queue.Queue, stop_event: threading.Event, interval: float = 0.8) -> None:
     last_fingerprint = ""
     last_metadata_key = ""
@@ -306,6 +345,7 @@ async def media_poll_loop(output: queue.Queue, stop_event: threading.Event, inte
                     if (
                         with_artwork.artwork_bytes is not None
                         and with_artwork.artwork_bytes != last_artwork_bytes
+                        and not is_probably_browser_app_icon(with_artwork, with_artwork.artwork_bytes)
                     ):
                         last_artwork_bytes = with_artwork.artwork_bytes
                         artwork_retries_remaining = 0
@@ -397,11 +437,29 @@ class HotkeyThread(threading.Thread):
 
 
 class GamepadThread(threading.Thread):
-    COMBOS = (
-        ("LB + A", 4, 0, Win32.VK_MEDIA_PLAY_PAUSE),
-        ("LB + B", 4, 1, Win32.VK_MEDIA_NEXT_TRACK),
-        ("LB + X", 4, 2, Win32.VK_MEDIA_PREV_TRACK),
+    # L3（左搖桿按下）作為修飾鍵，避免與 Forza 的 LB（離合器）衝突。
+    # Xbox: L3 = 按鈕索引 8, PlayStation: L3 = 按鈕索引 11。
+    L3_BUTTONS = (8, 11)
+
+    BUTTON_COMBOS = (
+        ("L3 + A", L3_BUTTONS, 0, Win32.VK_MEDIA_PLAY_PAUSE),
+        ("L3 + B", L3_BUTTONS, 1, Win32.VK_MEDIA_NEXT_TRACK),
+        ("L3 + X", L3_BUTTONS, 2, Win32.VK_MEDIA_PREV_TRACK),
     )
+    HAT_COMBOS = (
+        ("L3 + 上鍵", L3_BUTTONS, (0, 1), Win32.VK_VOLUME_UP),
+        ("L3 + 下鍵", L3_BUTTONS, (0, -1), Win32.VK_VOLUME_DOWN),
+    )
+    # PlayStation 手把的 D-Pad 通常映射為按鈕而非 hat，
+    # 以下為常見的 DualSense / DualShock 4 D-Pad 按鈕索引。
+    # 注意：僅在 hat_count == 0 時使用此 fallback，
+    # 避免與 L3 的 PS 索引 (11) 衝突。
+    PS_DPAD_BUTTONS: dict[tuple[int, int], tuple[int, ...]] = {
+        (0, 1): (11,),    # 上
+        (0, -1): (12,),   # 下
+        (-1, 0): (13,),   # 左
+        (1, 0): (14,),    # 右
+    }
 
     def __init__(self, output: queue.Queue, stop_event: threading.Event):
         super().__init__(daemon=True)
@@ -418,6 +476,7 @@ class GamepadThread(threading.Thread):
         pressed_combos: set[tuple[int, str]] = set()
         joysticks = []
         last_count = -1
+        last_pressed_inputs = set()
 
         try:
             pygame.init()
@@ -435,21 +494,73 @@ class GamepadThread(threading.Thread):
                         joysticks.append(joystick)
 
                     if count:
-                        names = ", ".join(joystick.get_name() for joystick in joysticks)
-                        self.output.put(("gamepad_status", f"手把控制已啟用：{names}"))
+                        info_parts = []
+                        for joystick in joysticks:
+                            name = joystick.get_name()
+                            n_buttons = joystick.get_numbuttons()
+                            n_hats = joystick.get_numhats()
+                            info_parts.append(f"{name} (按鈕:{n_buttons} hat:{n_hats})")
+                        self.output.put(("gamepad_status", f"手把控制已啟用：{', '.join(info_parts)}"))
                     else:
                         self.output.put(("gamepad_status", "手把控制：未偵測到控制器"))
 
                     last_count = count
 
+                pressed_this_tick = set()
                 for joy_index, joystick in enumerate(joysticks):
                     button_count = joystick.get_numbuttons()
-                    for label, modifier_button, action_button, media_key in self.COMBOS:
+                    hat_count = joystick.get_numhats()
+
+                    # 1. 偵測 L3
+                    for btn in self.L3_BUTTONS:
+                        if btn < button_count and joystick.get_button(btn):
+                            pressed_this_tick.add("L3")
+                            break
+
+                    # 2. 偵測 A
+                    if 0 < button_count and joystick.get_button(0):
+                        pressed_this_tick.add("A")
+
+                    # 3. 偵測 B
+                    if 1 < button_count and joystick.get_button(1):
+                        pressed_this_tick.add("B")
+
+                    # 4. 偵測 X
+                    if 2 < button_count and joystick.get_button(2):
+                        pressed_this_tick.add("X")
+
+                    # 5. 偵測 UP
+                    is_up = False
+                    for hat_index in range(hat_count):
+                        if joystick.get_hat(hat_index)[1] == 1:
+                            is_up = True
+                            break
+                    if not is_up and hat_count == 0:
+                        if 11 < button_count and joystick.get_button(11):
+                            is_up = True
+                    if is_up:
+                        pressed_this_tick.add("UP")
+
+                    # 6. 偵測 DOWN
+                    is_down = False
+                    for hat_index in range(hat_count):
+                        if joystick.get_hat(hat_index)[1] == -1:
+                            is_down = True
+                            break
+                    if not is_down and hat_count == 0:
+                        if 12 < button_count and joystick.get_button(12):
+                            is_down = True
+                    if is_down:
+                        pressed_this_tick.add("DOWN")
+                    for label, modifier_buttons, action_button, media_key in self.BUTTON_COMBOS:
                         combo_id = (joy_index, label)
-                        has_buttons = modifier_button < button_count and action_button < button_count
+                        modifier_pressed = any(
+                            btn < button_count and joystick.get_button(btn)
+                            for btn in modifier_buttons
+                        )
                         is_pressed = (
-                            has_buttons
-                            and joystick.get_button(modifier_button)
+                            modifier_pressed
+                            and action_button < button_count
                             and joystick.get_button(action_button)
                         )
 
@@ -458,6 +569,43 @@ class GamepadThread(threading.Thread):
                             send_media_key(media_key)
                         elif not is_pressed and combo_id in pressed_combos:
                             pressed_combos.remove(combo_id)
+
+                    for label, modifier_buttons, hat_value, media_key in self.HAT_COMBOS:
+                        combo_id = (joy_index, label)
+                        modifier_pressed = any(
+                            btn < button_count and joystick.get_button(btn)
+                            for btn in modifier_buttons
+                        )
+
+                        # Xbox 風格：D-Pad 透過 hat 報告
+                        is_hat_pressed = any(
+                            joystick.get_hat(hat_index) == hat_value
+                            for hat_index in range(hat_count)
+                        )
+
+                        # PS 風格：D-Pad 透過 button 報告（fallback）
+                        # 僅在 hat_count == 0 時啟用，避免與 L3 索引 (11) 衝突
+                        is_dpad_button_pressed = False
+                        if hat_count == 0:
+                            is_dpad_button_pressed = any(
+                                btn < button_count and joystick.get_button(btn)
+                                for btn in self.PS_DPAD_BUTTONS.get(hat_value, ())
+                            )
+
+                        is_pressed = (
+                            modifier_pressed
+                            and (is_hat_pressed or is_dpad_button_pressed)
+                        )
+
+                        if is_pressed and combo_id not in pressed_combos:
+                            pressed_combos.add(combo_id)
+                            send_media_key(media_key)
+                        elif not is_pressed and combo_id in pressed_combos:
+                            pressed_combos.remove(combo_id)
+
+                if pressed_this_tick != last_pressed_inputs:
+                    self.output.put(("gamepad_inputs", list(pressed_this_tick)))
+                    last_pressed_inputs = pressed_this_tick
 
                 time.sleep(0.04)
         except Exception as exc:
@@ -507,6 +655,111 @@ def format_time(seconds: float) -> str:
     return f"{remaining_minutes}:{remaining_seconds:02d}"
 
 
+def get_track_source_theme(track: TrackInfo, preferred_service: str | None = None) -> tuple[str, str, str]:
+    app_id = (track.app_id or "").lower()
+    title_lower = (track.title or "").lower()
+    album_lower = (track.album or "").lower()
+    artist_lower = (track.artist or "").lower()
+
+    # 1. Native application matching
+    if "spotify" in app_id:
+        return "spotify", "SPOTIFY", MUSIC_SERVICES["spotify"]["accent"]
+
+    if "apple" in app_id:
+        return "apple", "APPLE MUSIC", MUSIC_SERVICES["apple"]["accent"]
+
+    if "youtube" in app_id:
+        return "youtube", "YOUTUBE MUSIC", MUSIC_SERVICES["youtube"]["accent"]
+
+    # 2. Browser session auto-detection (Chrome, Edge, Firefox, Brave, Opera, etc.)
+    is_browser = any(b in app_id for b in ("chrome", "edge", "firefox", "opera", "brave", "vivaldi", "browser"))
+    if is_browser:
+        # YouTube / YouTube Music heuristics
+        if (
+            "youtube" in title_lower
+            or "youtube" in album_lower
+            or "youtube" in artist_lower
+        ):
+            return "youtube", "YOUTUBE MUSIC", MUSIC_SERVICES["youtube"]["accent"]
+
+        # Spotify heuristics
+        if (
+            "spotify" in title_lower
+            or "spotify" in album_lower
+            or "spotify" in artist_lower
+        ):
+            return "spotify", "SPOTIFY", MUSIC_SERVICES["spotify"]["accent"]
+
+        # Apple Music heuristics
+        if (
+            "apple" in title_lower
+            or "apple" in album_lower
+            or "apple" in artist_lower
+        ):
+            return "apple", "APPLE MUSIC", MUSIC_SERVICES["apple"]["accent"]
+
+        # Fallback to manually selected preferred service if browser media matches no keywords
+        service_key = normalize_music_service(preferred_service)
+        config = MUSIC_SERVICES[service_key]
+        return service_key, config["overlay"], config["accent"]
+
+    if track.app_id:
+        return "windows", track.app_id.upper(), "#5eead4"
+
+    service_key = normalize_music_service(preferred_service)
+    config = MUSIC_SERVICES[service_key]
+    return service_key, config["overlay"], config["accent"]
+
+
+def artwork_data_url(artwork_bytes: bytes | None) -> str | None:
+    if not artwork_bytes:
+        return None
+
+    if artwork_bytes.startswith(b"\x89PNG\r\n\x1a\n"):
+        mime_type = "image/png"
+    elif artwork_bytes.startswith(b"\xff\xd8"):
+        mime_type = "image/jpeg"
+    elif artwork_bytes.startswith(b"RIFF") and b"WEBP" in artwork_bytes[:16]:
+        mime_type = "image/webp"
+    else:
+        mime_type = "image/jpeg"
+
+    encoded = base64.b64encode(artwork_bytes).decode("ascii")
+    return f"data:{mime_type};base64,{encoded}"
+
+
+def track_to_payload(track: TrackInfo, preferred_service: str | None = None) -> dict:
+    service_key, source_label, accent = get_track_source_theme(track, preferred_service)
+    position = track.position_seconds
+    if track.duration_seconds > 0 and track.status.upper() == "PLAYING" and track.timeline_updated_at > 0:
+        elapsed = max(0.0, time.time() - track.timeline_updated_at)
+        position += elapsed * max(0.0, track.playback_rate)
+
+    if track.duration_seconds > 0:
+        position = min(max(position, 0.0), track.duration_seconds)
+    else:
+        position = 0.0
+
+    return {
+        "title": track.title,
+        "artist": track.artist,
+        "album": track.album,
+        "appId": track.app_id,
+        "status": track.status,
+        "error": track.error,
+        "isEmpty": track.is_empty,
+        "positionSeconds": round(position, 3),
+        "durationSeconds": round(track.duration_seconds, 3),
+        "timelineUpdatedAt": round(track.timeline_updated_at, 3),
+        "playbackRate": track.playback_rate,
+        "sourceLabel": source_label,
+        "service": service_key,
+        "accent": accent,
+        "artworkKey": get_artwork_key(track),
+        "artworkDataUrl": artwork_data_url(track.artwork_bytes),
+    }
+
+
 def load_settings() -> dict:
     settings = DEFAULT_SETTINGS.copy()
     if not SETTINGS_PATH.exists():
@@ -533,7 +786,11 @@ def save_settings(settings: dict) -> None:
 
 
 def normalize_music_service(value: str | None) -> str:
-    return "spotify" if value == "spotify" else "youtube"
+    if value in MUSIC_SERVICES:
+        return str(value)
+
+    return "youtube"
+
 
 
 def looks_like_supported_music(track: TrackInfo) -> bool:
@@ -542,10 +799,10 @@ def looks_like_supported_music(track: TrackInfo) -> bool:
 
     app_id = (track.app_id or "").lower()
     spotify_source = "spotify" in app_id
-    browser_source = any(source in app_id for source in ("chrome", "edge", "youtube"))
+    apple_source = "apple" in app_id
+    browser_source = any(source in app_id for source in ("chrome", "edge", "firefox", "opera", "brave", "vivaldi", "browser", "youtube", "apple"))
     has_media_metadata = bool(track.title and (track.artist or track.duration_seconds > 0))
-    return (spotify_source or browser_source) and has_media_metadata
-
+    return (spotify_source or apple_source or browser_source) and has_media_metadata
 
 class OverlayUI:
     WIDTH = 450
@@ -732,7 +989,7 @@ class OverlayUI:
         service_section = make_section("1. 選擇音樂來源", "#ff2d55")
         tk.Label(
             service_section,
-            text="按哪個服務，就會開啟對應網站，並自動套用紅色或綠色主題。",
+            text="按哪個服務，就會開啟對應網站，並自動套用紅色、綠色或黑色主題。",
             font=body_font,
             fg=muted,
             bg=panel_bg,
@@ -760,9 +1017,19 @@ class OverlayUI:
             fg="#07110b",
             active_bg="#19b957",
             height=2,
-        ).grid(row=0, column=1, sticky="nsew", padx=(7, 0), ipady=2)
+        ).grid(row=0, column=1, sticky="nsew", padx=7, ipady=2)
+        make_button(
+            service_buttons,
+            "開啟 Apple Music",
+            self.open_apple_music,
+            bg="#111111",
+            fg="#ffffff",
+            active_bg="#2a2a2a",
+            height=2,
+        ).grid(row=0, column=2, sticky="nsew", padx=(7, 0), ipady=2)
         service_buttons.columnconfigure(0, weight=1, uniform="service")
         service_buttons.columnconfigure(1, weight=1, uniform="service")
+        service_buttons.columnconfigure(2, weight=1, uniform="service")
         service_buttons.rowconfigure(0, weight=1)
 
         self.service_text = tk.StringVar(value=self.get_music_service_status())
@@ -852,10 +1119,12 @@ class OverlayUI:
             "Ctrl+Alt+H        顯示 / 隱藏控制台\n"
             "Ctrl+Alt+P        調整懸浮播放器位置\n"
             "Ctrl+Alt+Q        退出程式\n\n"
-            "手把組合鍵\n"
-            "LB + A            播放 / 暫停\n"
-            "LB + B            下一首\n"
-            "LB + X            上一首"
+            "手把組合鍵（L3 = 左搖桿按下）\n"
+            "L3 + A            播放 / 暫停\n"
+            "L3 + B            下一首\n"
+            "L3 + X            上一首\n"
+            "L3 + 上鍵         音量加\n"
+            "L3 + 下鍵         音量減"
         )
         tk.Label(
             hotkey_section,
@@ -1182,6 +1451,20 @@ class OverlayUI:
         ).pack(side="left", fill="x", expand=True, padx=(0, 8))
 
         tk.Button(
+            actions,
+            text="開啟 Apple Music",
+            command=self.open_apple_music,
+            font=("Microsoft JhengHei UI", 10, "bold"),
+            bg="#111111",
+            fg="#ffffff",
+            activebackground="#2a2a2a",
+            activeforeground="#ffffff",
+            relief="flat",
+            padx=12,
+            pady=10,
+        ).pack(side="left", fill="x", expand=True)
+
+        tk.Button(
             content,
             text="我已登入並播放，重新檢查",
             command=self.recheck_music_setup,
@@ -1235,6 +1518,8 @@ class OverlayUI:
                     self.status_text.set(f"快捷鍵註冊失敗：{payload}")
                 elif kind == "gamepad_status":
                     self.gamepad_text.set(payload)
+                elif kind == "gamepad_inputs":
+                    pass
         except queue.Empty:
             pass
 
@@ -1245,6 +1530,9 @@ class OverlayUI:
 
         if "spotify" in app_id:
             return "SPOTIFY", "#1ed760"
+
+        if "apple" in app_id:
+            return "APPLE MUSIC", "#111111"
 
         if "youtube" in app_id:
             return "YOUTUBE MUSIC", "#ff0033"
@@ -1357,6 +1645,10 @@ class OverlayUI:
         self.set_music_service("spotify")
         webbrowser.open(SPOTIFY_URL)
 
+    def open_apple_music(self) -> None:
+        self.set_music_service("apple")
+        webbrowser.open(APPLE_MUSIC_URL)
+
     def toggle_overlay(self) -> None:
         self.overlay_visible = not self.overlay_visible
         if self.overlay_visible:
@@ -1428,6 +1720,146 @@ class OverlayUI:
                 self.status_text.set(f"關閉設定視窗時發生錯誤：{exc}")
             self.setup_window.destroy()
         self.root.after(100, self.root.destroy)
+
+
+def emit_backend_event(payload: dict) -> None:
+    print(json.dumps(payload, ensure_ascii=False, separators=(",", ":")), flush=True)
+
+
+def read_backend_commands(command_queue: queue.Queue, stop_event: threading.Event) -> None:
+    while not stop_event.is_set():
+        line = sys.stdin.readline()
+        if line == "":
+            stop_event.set()
+            break
+
+        line = line.strip()
+        if not line:
+            continue
+
+        try:
+            command_queue.put(json.loads(line))
+        except json.JSONDecodeError as exc:
+            command_queue.put({"type": "protocol:error", "message": str(exc)})
+
+
+def handle_backend_command(command: dict, stop_event: threading.Event) -> None:
+    command_type = str(command.get("type", ""))
+
+    media_keys = {
+        "media:playPause": Win32.VK_MEDIA_PLAY_PAUSE,
+        "media:next": Win32.VK_MEDIA_NEXT_TRACK,
+        "media:previous": Win32.VK_MEDIA_PREV_TRACK,
+        "media:volumeUp": Win32.VK_VOLUME_UP,
+        "media:volumeDown": Win32.VK_VOLUME_DOWN,
+        "media:mute": Win32.VK_VOLUME_MUTE,
+    }
+
+    if command_type in media_keys:
+        send_media_key(media_keys[command_type])
+    elif command_type == "open:youtube":
+        settings = load_settings()
+        settings["music_service"] = "youtube"
+        save_settings(settings)
+        webbrowser.open(YOUTUBE_MUSIC_URL)
+    elif command_type == "open:spotify":
+        settings = load_settings()
+        settings["music_service"] = "spotify"
+        save_settings(settings)
+        webbrowser.open(SPOTIFY_URL)
+    elif command_type == "open:apple":
+        settings = load_settings()
+        settings["music_service"] = "apple"
+        save_settings(settings)
+        webbrowser.open(APPLE_MUSIC_URL)
+    elif command_type == "settings:setService":
+        service = normalize_music_service(command.get("service"))
+        settings = load_settings()
+        settings["music_service"] = service
+        save_settings(settings)
+    elif command_type == "app:quit":
+        stop_event.set()
+    elif command_type == "protocol:error":
+        emit_backend_event({"type": "protocol:error", "message": command.get("message", "Invalid JSON")})
+
+
+def run_stdio_backend() -> int:
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", line_buffering=True)
+        sys.stderr.reconfigure(encoding="utf-8", line_buffering=True)
+    except Exception:
+        pass
+
+    output: queue.Queue = queue.Queue()
+    command_queue: queue.Queue = queue.Queue()
+    stop_event = threading.Event()
+    settings = load_settings()
+
+    media_thread = threading.Thread(
+        target=lambda: asyncio.run(media_poll_loop(output, stop_event)),
+        daemon=True,
+        name="media-poll",
+    )
+    hotkey_thread = HotkeyThread(output, stop_event)
+    gamepad_thread = GamepadThread(output, stop_event)
+    stdin_thread = threading.Thread(
+        target=read_backend_commands,
+        args=(command_queue, stop_event),
+        daemon=True,
+        name="backend-stdin",
+    )
+
+    media_thread.start()
+    hotkey_thread.start()
+    gamepad_thread.start()
+    stdin_thread.start()
+
+    emit_backend_event(
+        {
+            "type": "backend:ready",
+            "version": APP_VERSION,
+            "appTitle": APP_TITLE,
+            "settings": settings,
+            "services": MUSIC_SERVICES,
+        }
+    )
+
+    try:
+        while not stop_event.is_set():
+            try:
+                while True:
+                    handle_backend_command(command_queue.get_nowait(), stop_event)
+                    settings = load_settings()
+            except queue.Empty:
+                pass
+
+            try:
+                kind, payload = output.get(timeout=0.15)
+            except queue.Empty:
+                continue
+
+            if kind == "track":
+                emit_backend_event(
+                    {
+                        "type": "track:update",
+                        "track": track_to_payload(payload, settings.get("music_service")),
+                    }
+                )
+            elif kind == "command":
+                emit_backend_event({"type": "command", "command": payload})
+                if payload == "quit":
+                    stop_event.set()
+            elif kind == "hotkey_error":
+                emit_backend_event({"type": "hotkey:error", "message": payload})
+            elif kind == "gamepad_status":
+                emit_backend_event({"type": "gamepad:status", "message": payload})
+            elif kind == "gamepad_inputs":
+                emit_backend_event({"type": "gamepad:inputs", "pressed": payload})
+    finally:
+        stop_event.set()
+        hotkey_thread.stop()
+
+    return 0
 
 
 def run_check() -> int:
@@ -1508,6 +1940,7 @@ def main() -> int:
     parser.add_argument("--check", action="store_true", help="check dependencies and exit")
     parser.add_argument("--hotkey-check", action="store_true", help="check global hotkey registration and exit")
     parser.add_argument("--once", action="store_true", help="print current media session metadata and exit")
+    parser.add_argument("--stdio-backend", action="store_true", help="run JSON-lines backend for Electron")
     parser.add_argument("--overlay-only", action="store_true", help="start with the control panel hidden")
     parser.add_argument("--smoke-seconds", type=float, default=0.0, help="close automatically after N seconds")
     args = parser.parse_args()
@@ -1520,6 +1953,9 @@ def main() -> int:
 
     if args.once:
         return asyncio.run(run_once())
+
+    if args.stdio_backend:
+        return run_stdio_backend()
 
     if PIL_IMPORT_ERROR is not None:
         messagebox.showerror(APP_TITLE, f"Pillow is required.\n\n{PIL_IMPORT_ERROR}")

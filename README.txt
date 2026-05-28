@@ -58,12 +58,14 @@ Ctrl+Alt+H        顯示 / 最小化控制台
 Ctrl+Alt+P        切換懸浮播放器位置調整模式
 Ctrl+Alt+Q        退出程式
 
-手把組合鍵
-----------
+手把組合鍵（L3 = 左搖桿按下）
+------------------------------
 
-LB + A            播放 / 暫停
-LB + B            下一首
-LB + X            上一首
+L3 + A            播放 / 暫停
+L3 + B            下一首
+L3 + X            上一首
+L3 + D-Pad 上     音量增加
+L3 + D-Pad 下     音量降低
 
 調整懸浮播放器位置
 ------------------
@@ -161,12 +163,14 @@ Ctrl+Alt+H        Show / minimize control panel
 Ctrl+Alt+P        Toggle floating player position mode
 Ctrl+Alt+Q        Quit app
 
-Controller Combos
------------------
+Controller Combos (L3 = Left Stick Press)
+-----------------------------------------
 
-LB + A            Play / pause
-LB + B            Next track
-LB + X            Previous track
+L3 + A            Play / pause
+L3 + B            Next track
+L3 + X            Previous track
+L3 + D-Pad Up     Volume up
+L3 + D-Pad Down   Volume down
 
 Move The Floating Player
 ------------------------
