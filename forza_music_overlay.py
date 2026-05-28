@@ -236,49 +236,63 @@ async def read_thumbnail_bytes(thumbnail) -> bytes | None:
 
     from winsdk.windows.storage.streams import DataReader
 
-    stream = await thumbnail.open_read_async()
-    if stream is None or stream.size == 0:
-        return None
+    try:
+        stream = await asyncio.wait_for(thumbnail.open_read_async(), timeout=1.8)
+        if stream is None or stream.size == 0:
+            return None
 
-    reader = DataReader(stream.get_input_stream_at(0))
-    await reader.load_async(stream.size)
-    return bytes(reader.read_buffer(stream.size))
+        reader = DataReader(stream.get_input_stream_at(0))
+        await asyncio.wait_for(reader.load_async(stream.size), timeout=1.8)
+        return bytes(reader.read_buffer(stream.size))
+    except Exception:
+        return None
 
 
 async def get_current_track(read_artwork: bool = True) -> TrackInfo:
-    from winsdk.windows.media.control import (
-        GlobalSystemMediaTransportControlsSessionManager as MediaManager,
-    )
+    try:
+        from winsdk.windows.media.control import (
+            GlobalSystemMediaTransportControlsSessionManager as MediaManager,
+        )
 
-    manager = await MediaManager.request_async()
-    session = manager.get_current_session()
-    if session is None:
-        return TrackInfo(status="NO_SESSION")
+        manager = await asyncio.wait_for(MediaManager.request_async(), timeout=1.8)
+        session = manager.get_current_session()
+        if session is None:
+            return TrackInfo(status="NO_SESSION")
 
-    props = await session.try_get_media_properties_async()
-    playback = session.get_playback_info()
-    status = getattr(playback.playback_status, "name", str(playback.playback_status))
-    timeline = session.get_timeline_properties()
-    start_seconds = timeline.start_time.total_seconds()
-    end_seconds = timeline.end_time.total_seconds()
-    position_seconds = max(0.0, timeline.position.total_seconds() - start_seconds)
-    duration_seconds = max(0.0, end_seconds - start_seconds)
-    timeline_updated_at = timeline.last_updated_time.timestamp()
-    playback_rate = getattr(playback, "playback_rate", 1.0) or 1.0
-    artwork_bytes = await read_thumbnail_bytes(props.thumbnail) if read_artwork else None
+        props = await asyncio.wait_for(session.try_get_media_properties_async(), timeout=1.8)
+        playback = session.get_playback_info()
+        status = getattr(playback.playback_status, "name", str(playback.playback_status))
+        timeline = session.get_timeline_properties()
+        start_seconds = timeline.start_time.total_seconds()
+        end_seconds = timeline.end_time.total_seconds()
+        position_seconds = max(0.0, timeline.position.total_seconds() - start_seconds)
+        duration_seconds = max(0.0, end_seconds - start_seconds)
+        timeline_updated_at = timeline.last_updated_time.timestamp()
+        playback_rate = getattr(playback, "playback_rate", 1.0) or 1.0
+        
+        artwork_bytes = None
+        if read_artwork and props.thumbnail:
+            try:
+                artwork_bytes = await asyncio.wait_for(read_thumbnail_bytes(props.thumbnail), timeout=2.2)
+            except Exception:
+                pass
 
-    return TrackInfo(
-        title=(props.title or "").strip(),
-        artist=(props.artist or "").strip(),
-        album=(props.album_title or "").strip(),
-        app_id=(session.source_app_user_model_id or "").strip(),
-        status=status,
-        artwork_bytes=artwork_bytes,
-        position_seconds=position_seconds,
-        duration_seconds=duration_seconds,
-        timeline_updated_at=timeline_updated_at,
-        playback_rate=float(playback_rate),
-    )
+        return TrackInfo(
+            title=(props.title or "").strip(),
+            artist=(props.artist or "").strip(),
+            album=(props.album_title or "").strip(),
+            app_id=(session.source_app_user_model_id or "").strip(),
+            status=status,
+            artwork_bytes=artwork_bytes,
+            position_seconds=position_seconds,
+            duration_seconds=duration_seconds,
+            timeline_updated_at=timeline_updated_at,
+            playback_rate=float(playback_rate),
+        )
+    except asyncio.TimeoutError:
+        return TrackInfo(status="ERROR", error="讀取 Windows 媒體逾時")
+    except Exception as exc:
+        return TrackInfo(status="ERROR", error=str(exc))
 
 
 def get_artwork_key(track: TrackInfo) -> str:
