@@ -47,6 +47,11 @@ const positionMode = ref(false)
 const themeMode = ref<ThemeMode>('dark')
 const playerScale = ref(DEFAULT_PLAYER_SCALE)
 const pressedGamepadButtons = ref<string[]>([])
+const showSpotifyTip = ref(localStorage.getItem('forza:show-spotify-tip') !== 'false')
+function closeSpotifyTip(): void {
+  showSpotifyTip.value = false
+  localStorage.setItem('forza:show-spotify-tip', 'false')
+}
 
 const emptyTrack: TrackState = {
   title: '',
@@ -136,7 +141,11 @@ const currentTimeLabel = computed(() => formatTime(displayPosition.value))
 const durationTimeLabel = computed(() => (track.value.durationSeconds > 0 ? formatTime(track.value.durationSeconds) : '--:--'))
 const combinedTimeLabel = computed(() => `${currentTimeLabel.value}/${durationTimeLabel.value}`)
 const progressPercent = computed(() => `${progressRatio.value * 100}%`)
-const themeClass = computed(() => (themeMode.value === 'luxury' ? 'theme-luxury' : 'theme-dark'))
+const themeClass = computed(() => {
+  if (themeMode.value === 'luxury') return 'theme-luxury'
+  if (themeMode.value === 'radio') return 'theme-radio'
+  return 'theme-dark'
+})
 const playerScalePercent = computed(() => Math.round(playerScale.value * 100))
 const keyboardShortcuts = [
   { keys: 'Ctrl+Alt+Space', action: '播放 / 暫停' },
@@ -389,6 +398,10 @@ onUnmounted(() => {
               <Sparkles :size="15" />
               Liquid Glass
             </button>
+            <button :class="{ selected: themeMode === 'radio' }" type="button" @click="setThemeMode('radio')">
+              <Radio :size="15" />
+              無邊框電台
+            </button>
           </div>
           <div class="status-pill" :style="{ borderColor: visibleAccent, color: visibleAccent }">
             <Radio :size="16" />
@@ -428,10 +441,44 @@ onUnmounted(() => {
           <ExternalLink :size="19" />
           開啟 Spotify
         </button>
-        <button class="service-button apple" type="button" @click="openService('open:apple')">
-          <ExternalLink :size="19" />
-          開啟 Apple Music
-        </button>
+        <div class="service-button-wrapper">
+          <button class="service-button apple" type="button" @click="openService('open:apple')">
+            <ExternalLink :size="19" />
+            開啟 Apple Music
+          </button>
+          
+          <Transition name="tip-fade">
+            <div v-if="showSpotifyTip" class="spotify-tip-box">
+              <div class="tip-header">
+                <span class="tip-badge">💡 Spotify Premium 遙控功能</span>
+                <button class="tip-close-btn" type="button" aria-label="關閉提示" @click.stop="closeSpotifyTip">
+                  &times;
+                </button>
+              </div>
+              <p class="tip-text">提醒您！有 Spotify Premium 即可在任何裝置同步遙控控制此電台</p>
+            </div>
+          </Transition>
+
+          <!-- Ultra-sleek technical dashed curved line with glowing pulse dot -->
+          <Transition name="tip-fade">
+            <svg v-if="showSpotifyTip" class="spotify-tip-arrow" viewBox="0 0 160 50" preserveAspectRatio="none">
+              <defs>
+                <linearGradient id="lineGrad" x1="0%" y1="100%" x2="100%" y2="0%">
+                  <stop offset="0%" stop-color="#1ed760" stop-opacity="1" />
+                  <stop offset="100%" stop-color="#1ed760" stop-opacity="0.4" />
+                </linearGradient>
+                <marker id="tip-arrowhead-small" markerWidth="4" markerHeight="4" refX="1" refY="2" orient="auto">
+                  <polygon points="0 0, 4 2, 0 4" fill="#1ed760" />
+                </marker>
+              </defs>
+              <!-- Dashed curved connector from Spotify (left side) to Tip Box bottom (right side) -->
+              <path d="M -80 44 C -40 25, 0 12, 40 8" fill="none" stroke="url(#lineGrad)" stroke-width="1.2" stroke-dasharray="3 3" marker-end="url(#tip-arrowhead-small)" />
+              <!-- Pulsing source node at the Spotify end -->
+              <circle cx="-80" cy="44" r="3.5" fill="#1ed760" />
+              <circle class="pulse-node" cx="-80" cy="44" r="7" fill="none" stroke="#1ed760" stroke-width="1" />
+            </svg>
+          </Transition>
+        </div>
       </div>
     </section>
 
@@ -607,7 +654,52 @@ onUnmounted(() => {
   </main>
 
   <main v-else class="player-shell" :class="themeClass">
-    <section :class="[themeMode === 'luxury' ? 'liquid-player' : 'floating-card', { 'position-mode': positionMode, idle: isIdle }]">
+    <!-- Radio (borderless) player -->
+    <section v-if="themeMode === 'radio'" :class="['radio-player', { 'position-mode': positionMode, idle: isIdle }]">
+      <div class="radio-pulse" :class="{ playing: !isIdle && track.status.toUpperCase() === 'PLAYING' }"></div>
+      <div class="radio-artwork" :class="{ idle: isIdle }">
+        <Transition name="art-swap" mode="out-in">
+          <img v-if="track.artworkDataUrl" :key="track.artworkKey" :src="track.artworkDataUrl" alt="Album artwork" />
+          <div v-else :key="isIdle ? 'idle-radio-artwork' : 'empty-radio-artwork'" class="artwork-placeholder">
+            <Radio :size="20" />
+          </div>
+        </Transition>
+      </div>
+      <div class="radio-body">
+        <div class="radio-freq">
+          <span class="radio-dot"></span>
+          <span>{{ serviceName }}</span>
+        </div>
+        <Transition name="text-crossfade" mode="out-in">
+          <div :key="trackContentKey" class="radio-track">
+            <span class="radio-title">
+              <span
+                v-for="(char, index) in titleChars"
+                :key="index + '-' + char"
+                class="char-flow"
+                :style="{ animationDelay: `${index * 16}ms` }"
+              >{{ char }}</span>
+            </span>
+            <span class="radio-artist">
+              <span
+                v-for="(char, index) in artistChars"
+                :key="index + '-' + char"
+                class="char-flow"
+                :style="{ animationDelay: `${index * 10}ms` }"
+              >{{ char }}</span>
+            </span>
+          </div>
+        </Transition>
+      </div>
+      <span class="radio-time">{{ combinedTimeLabel }}</span>
+      <div v-if="positionMode" class="drag-chip">拖曳調整位置</div>
+      <div class="radio-progress">
+        <div :style="{ width: progressPercent }"></div>
+      </div>
+    </section>
+
+    <!-- Standard dark / luxury player -->
+    <section v-else :class="[themeMode === 'luxury' ? 'liquid-player' : 'floating-card', { 'position-mode': positionMode, idle: isIdle }]">
       <div class="mini-artwork" :class="{ idle: isIdle }">
         <Transition name="art-swap" mode="out-in">
           <img v-if="track.artworkDataUrl" :key="track.artworkKey" :src="track.artworkDataUrl" alt="Album artwork" />

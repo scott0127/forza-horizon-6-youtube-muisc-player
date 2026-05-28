@@ -7,11 +7,11 @@ $ErrorActionPreference = 'Stop'
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 Set-Location $scriptDir
 
-$appVersion = '2.2.0'
+$appVersion = '2.3.0'
 $releaseRoot = Join-Path $scriptDir 'release'
-$packageDir = Join-Path $releaseRoot 'ForzaMusicOverlay-release2.2'
+$packageDir = Join-Path $releaseRoot 'ForzaMusicOverlay-release2.3'
 $appFilesDir = Join-Path $packageDir 'AppFiles'
-$zipPath = Join-Path $releaseRoot 'ForzaMusicOverlay-release2.2.zip'
+$zipPath = Join-Path $releaseRoot 'ForzaMusicOverlay-release2.3.zip'
 $launcherOut = Join-Path $scriptDir 'tmp\launcher\ForzaMusicOverlay.exe'
 $iconPath = Join-Path $scriptDir 'electron-app\build\logo.ico'
 

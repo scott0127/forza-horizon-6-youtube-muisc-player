@@ -16,7 +16,7 @@ const isDev = !app.isPackaged
 const startOverlayOnly = process.argv.includes('--overlay-only')
 
 interface AppSettings {
-  themeMode?: 'dark' | 'luxury'
+  themeMode?: 'dark' | 'luxury' | 'radio'
   playerScale?: number
   playerBounds?: {
     x: number
@@ -37,8 +37,10 @@ const PLAYER_SCALE = {
   max: 1
 }
 
-function normalizeThemeMode(value: unknown): 'dark' | 'luxury' {
-  return value === 'luxury' ? 'luxury' : 'dark'
+function normalizeThemeMode(value: unknown): 'dark' | 'luxury' | 'radio' {
+  if (value === 'luxury') return 'luxury'
+  if (value === 'radio') return 'radio'
+  return 'dark'
 }
 
 function normalizePlayerScale(value: unknown): number {
@@ -132,7 +134,7 @@ function refreshPlayerWindow(): void {
   }
 }
 
-function getThemeMode(): 'dark' | 'luxury' {
+function getThemeMode(): 'dark' | 'luxury' | 'radio' {
   return normalizeThemeMode(readSettings().themeMode)
 }
 
@@ -140,7 +142,7 @@ function getPlayerScale(settings = readSettings()): number {
   return normalizePlayerScale(settings.playerScale)
 }
 
-function setThemeMode(themeMode: 'dark' | 'luxury'): 'dark' | 'luxury' {
+function setThemeMode(themeMode: 'dark' | 'luxury' | 'radio'): 'dark' | 'luxury' | 'radio' {
   const settings = readSettings()
   settings.themeMode = normalizeThemeMode(themeMode)
   writeSettings(settings)
@@ -470,7 +472,7 @@ ipcMain.handle('theme:get', () => {
   return getThemeMode()
 })
 
-ipcMain.handle('theme:set', (_event, themeMode: 'dark' | 'luxury') => {
+ipcMain.handle('theme:set', (_event, themeMode: 'dark' | 'luxury' | 'radio') => {
   return setThemeMode(themeMode)
 })
 

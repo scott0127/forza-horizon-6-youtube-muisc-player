@@ -1,5 +1,5 @@
 export type MusicService = 'youtube' | 'spotify' | 'apple' | 'windows'
-export type ThemeMode = 'dark' | 'luxury'
+export type ThemeMode = 'dark' | 'luxury' | 'radio'
 
 export interface TrackState {
   title: string

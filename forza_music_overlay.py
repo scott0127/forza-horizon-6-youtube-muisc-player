@@ -338,7 +338,7 @@ def is_probably_browser_app_icon(track: TrackInfo, artwork_bytes: bytes) -> bool
         return False
 
     alpha = image.getchannel("A")
-    transparent_pixels = sum(1 for value in alpha.getdata() if value < 245)
+    transparent_pixels = sum(1 for value in alpha.tobytes() if value < 245)
     transparent_ratio = transparent_pixels / float(width * height)
     return transparent_ratio > 0.08
 

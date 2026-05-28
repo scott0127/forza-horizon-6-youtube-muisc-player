@@ -36,7 +36,7 @@ contextBridge.exposeInMainWorld('forzaApi', {
   getThemeMode() {
     return ipcRenderer.invoke('theme:get')
   },
-  setThemeMode(themeMode: 'dark' | 'luxury') {
+  setThemeMode(themeMode: 'dark' | 'luxury' | 'radio') {
     return ipcRenderer.invoke('theme:set', themeMode)
   },
   getPlayerScale() {
