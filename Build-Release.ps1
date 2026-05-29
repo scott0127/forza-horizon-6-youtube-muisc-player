@@ -14,7 +14,7 @@ $appVersion = '2.3.1'
 $releaseRoot = Join-Path $scriptDir 'release'
 $packageDir = Join-Path $releaseRoot "ForzaMusicOverlay-release$appVersion$suffix"
 $appFilesDir = Join-Path $packageDir 'AppFiles'
-$rarPath = Join-Path $releaseRoot "ForzaMusicOverlay-release$appVersion$suffix.rar"
+$zipPath = Join-Path $releaseRoot "ForzaMusicOverlay-release$appVersion$suffix.zip"
 $launcherOut = Join-Path $scriptDir 'tmp\launcher\ForzaMusicOverlay.exe'
 $iconPath = Join-Path $scriptDir 'electron-app\build\logo.ico'
 
@@ -36,6 +36,7 @@ if (-not $SkipBuild) {
     & $venvPython -m PyInstaller `
         --clean `
         --noconfirm `
+        --noupx `
         --onedir `
         --name ForzaMusicOverlayBackend `
         --collect-submodules winsdk `
@@ -125,29 +126,18 @@ Copy-Item -LiteralPath '.\release-assets\Install-App.ps1' -Destination $appFiles
 Copy-Item -LiteralPath '.\release-assets\Uninstall-App.ps1' -Destination $appFilesDir -Force
 Copy-Item -LiteralPath '.\LICENSE' -Destination $appFilesDir -Force
 
-Write-Host "Creating uncompressible random padding file to exceed Google Drive's 100MB scan limit..."
-$paddingPath = Join-Path $appFilesDir 'google_drive_scan_bypass.bin'
-$randomBytes = New-Object Byte[] (50 * 1024 * 1024)
-$rand = New-Object System.Random
-$rand.NextBytes($randomBytes)
-[System.IO.File]::WriteAllBytes($paddingPath, $randomBytes)
-
-$rarExe = "C:\Program Files\WinRAR\Rar.exe"
-if (Test-Path -LiteralPath $rarPath) {
-    Remove-Item -LiteralPath $rarPath -Force
+if (Test-Path -LiteralPath $zipPath) {
+    Remove-Item -LiteralPath $zipPath -Force
 }
 
-Write-Host "Compressing release package to RAR using WinRAR..."
-& $rarExe a -r -ep1 "$rarPath" "$packageDir"
-if ($LASTEXITCODE -ne 0) {
-    throw 'WinRAR compression failed.'
-}
+Write-Host "Compressing release package to ZIP..."
+Compress-Archive -Path "$packageDir\*" -DestinationPath $zipPath -CompressionLevel Optimal
 
-$rarItem = Get-Item -LiteralPath $rarPath
+$zipItem = Get-Item -LiteralPath $zipPath
 $packageItemCount = (Get-ChildItem -LiteralPath $packageDir -Recurse -File | Measure-Object).Count
 
 Write-Host ''
 Write-Host 'Release package created:'
-Write-Host $rarPath
-Write-Host "Size: $([Math]::Round($rarItem.Length / 1MB, 2)) MB"
+Write-Host $zipPath
+Write-Host "Size: $([Math]::Round($zipItem.Length / 1MB, 2)) MB"
 Write-Host "Files: $packageItemCount"
