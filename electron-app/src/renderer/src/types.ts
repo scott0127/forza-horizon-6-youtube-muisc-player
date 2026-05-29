@@ -50,6 +50,7 @@ export interface ForzaApi {
   onPlayerScale(callback: (event: PlayerScaleEvent) => void): () => void
   sendBackendCommand(command: Record<string, unknown>): Promise<void>
   showControlWindow(): Promise<void>
+  hideControlWindow(): Promise<void>
   togglePlayerWindow(): Promise<void>
   togglePositionMode(): Promise<boolean>
   getThemeMode(): Promise<ThemeMode>

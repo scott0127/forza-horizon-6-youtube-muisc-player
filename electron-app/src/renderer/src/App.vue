@@ -12,6 +12,7 @@ import {
   Move,
   Music2,
   Minus,
+  Minimize2,
   Plus,
   Power,
   Radio,
@@ -202,6 +203,10 @@ function openService(type: 'open:youtube' | 'open:spotify' | 'open:apple'): void
 
 function togglePlayerWindow(): void {
   window.forzaApi.togglePlayerWindow()
+}
+
+function minimizeToTray(): void {
+  window.forzaApi.hideControlWindow()
 }
 
 async function togglePositionMode(): Promise<void> {
@@ -646,6 +651,7 @@ onUnmounted(() => {
       <button type="button" @click="command('media:volumeDown')"><Volume2 :size="18" />音量減</button>
       <button type="button" @click="command('media:volumeUp')"><Volume2 :size="18" />音量加</button>
       <button type="button" @click="command('media:mute')"><VolumeX :size="18" />靜音</button>
+      <button type="button" @click="minimizeToTray"><Minimize2 :size="18" />縮小至工作列</button>
       <button class="danger" type="button" @click="command('app:quit')"><Power :size="18" />退出</button>
     </section>
 
