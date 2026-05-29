@@ -9,9 +9,9 @@ Set-Location $scriptDir
 
 $appVersion = '2.3.0'
 $releaseRoot = Join-Path $scriptDir 'release'
-$packageDir = Join-Path $releaseRoot 'ForzaMusicOverlay-release2.3'
+$packageDir = Join-Path $releaseRoot 'ForzaMusicOverlay-release2.3_eng'
 $appFilesDir = Join-Path $packageDir 'AppFiles'
-$zipPath = Join-Path $releaseRoot 'ForzaMusicOverlay-release2.3.zip'
+$zipPath = Join-Path $releaseRoot 'ForzaMusicOverlay-release2.3_eng.zip'
 $launcherOut = Join-Path $scriptDir 'tmp\launcher\ForzaMusicOverlay.exe'
 $iconPath = Join-Path $scriptDir 'electron-app\build\logo.ico'
 

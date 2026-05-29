@@ -34,7 +34,7 @@ else:
     PIL_IMPORT_ERROR = None
 
 
-APP_TITLE = "Forza 音樂懸浮播放器"
+APP_TITLE = "Forza Music Floating Player"
 APP_VERSION = "2.0.0"
 YOUTUBE_MUSIC_URL = "https://music.youtube.com"
 SPOTIFY_URL = "https://open.spotify.com"
@@ -471,8 +471,8 @@ class HotkeyThread(threading.Thread):
 
 
 class GamepadThread(threading.Thread):
-    # L3（左搖桿按下）作為修飾鍵，避免與 Forza 的 LB（離合器）衝突。
-    # Xbox: L3 = 按鈕索引 8, PlayStation: L3 = 按鈕索引 11。
+    # L3 (left stick press) as modifier key to avoid conflict with Forza's LB (clutch).
+    # Xbox: L3 = button index 8, PlayStation: L3 = button index 11.
     L3_BUTTONS = (8, 11)
 
     BUTTON_COMBOS = (
@@ -481,18 +481,18 @@ class GamepadThread(threading.Thread):
         ("L3 + X", L3_BUTTONS, 2, Win32.VK_MEDIA_PREV_TRACK),
     )
     HAT_COMBOS = (
-        ("L3 + 上鍵", L3_BUTTONS, (0, 1), Win32.VK_VOLUME_UP),
-        ("L3 + 下鍵", L3_BUTTONS, (0, -1), Win32.VK_VOLUME_DOWN),
+        ("L3 + Up", L3_BUTTONS, (0, 1), Win32.VK_VOLUME_UP),
+        ("L3 + Down", L3_BUTTONS, (0, -1), Win32.VK_VOLUME_DOWN),
     )
-    # PlayStation 手把的 D-Pad 通常映射為按鈕而非 hat，
-    # 以下為常見的 DualSense / DualShock 4 D-Pad 按鈕索引。
-    # 注意：僅在 hat_count == 0 時使用此 fallback，
-    # 避免與 L3 的 PS 索引 (11) 衝突。
+    # PlayStation D-Pad is usually mapped as buttons instead of hat.
+    # Below are common DualSense / DualShock 4 D-Pad button indices.
+    # Note: only used as fallback when hat_count == 0,
+    # to avoid conflict with L3's PS index (11).
     PS_DPAD_BUTTONS: dict[tuple[int, int], tuple[int, ...]] = {
-        (0, 1): (11,),    # 上
-        (0, -1): (12,),   # 下
-        (-1, 0): (13,),   # 左
-        (1, 0): (14,),    # 右
+        (0, 1): (11,),    # Up
+        (0, -1): (12,),   # Down
+        (-1, 0): (13,),   # Left
+        (1, 0): (14,),    # Right
     }
 
     def __init__(self, output: queue.Queue, stop_event: threading.Event):
@@ -504,7 +504,7 @@ class GamepadThread(threading.Thread):
         try:
             import pygame
         except Exception as exc:
-            self.output.put(("gamepad_status", f"手把控制未啟用：pygame 尚未安裝 ({exc})"))
+            self.output.put(("gamepad_status", f"Controller disabled: pygame not installed ({exc})"))
             return
 
         pressed_combos: set[tuple[int, str]] = set()
@@ -536,10 +536,10 @@ class GamepadThread(threading.Thread):
                                 name = joystick.get_name()
                                 n_buttons = joystick.get_numbuttons()
                                 n_hats = joystick.get_numhats()
-                                info_parts.append(f"{name} (按鈕:{n_buttons} hat:{n_hats})")
-                            self.output.put(("gamepad_status", f"手把控制已啟用：{', '.join(info_parts)}"))
+                                info_parts.append(f"{name} (buttons:{n_buttons} hat:{n_hats})")
+                            self.output.put(("gamepad_status", f"Controller enabled: {', '.join(info_parts)}"))
                         else:
-                            self.output.put(("gamepad_status", "手把控制：未偵測到控制器"))
+                            self.output.put(("gamepad_status", "Controller: no controller detected"))
 
                         last_count = count
                         pressed_combos.clear()
@@ -552,25 +552,25 @@ class GamepadThread(threading.Thread):
                         except Exception:
                             continue
 
-                        # 1. 偵測 L3
+                        # 1. Detect L3
                         for btn in self.L3_BUTTONS:
                             if btn < button_count and joystick.get_button(btn):
                                 pressed_this_tick.add("L3")
                                 break
 
-                        # 2. 偵測 A
+                        # 2. Detect A
                         if 0 < button_count and joystick.get_button(0):
                             pressed_this_tick.add("A")
 
-                        # 3. 偵測 B
+                        # 3. Detect B
                         if 1 < button_count and joystick.get_button(1):
                             pressed_this_tick.add("B")
 
-                        # 4. 偵測 X
+                        # 4. Detect X
                         if 2 < button_count and joystick.get_button(2):
                             pressed_this_tick.add("X")
 
-                        # 5. 偵測 UP
+                        # 5. Detect UP
                         is_up = False
                         for hat_index in range(hat_count):
                             if joystick.get_hat(hat_index)[1] == 1:
@@ -582,7 +582,7 @@ class GamepadThread(threading.Thread):
                         if is_up:
                             pressed_this_tick.add("UP")
 
-                        # 6. 偵測 DOWN
+                        # 6. Detect DOWN
                         is_down = False
                         for hat_index in range(hat_count):
                             if joystick.get_hat(hat_index)[1] == -1:
@@ -622,14 +622,14 @@ class GamepadThread(threading.Thread):
                                 for btn in modifier_buttons
                             )
 
-                            # Xbox 風格：D-Pad 透過 hat 報告
+                            # Xbox style: D-Pad reported via hat
                             is_hat_pressed = any(
                                 joystick.get_hat(hat_index) == hat_value
                                 for hat_index in range(hat_count)
                             )
 
-                            # PS 風格：D-Pad 透過 button 報告（fallback）
-                            # 僅在 hat_count == 0 時啟用，避免與 L3 索引 (11) 衝突
+                            # PS style: D-Pad reported via button (fallback)
+                            # Only enabled when hat_count == 0 to avoid conflict with L3 index (11)
                             is_dpad_button_pressed = False
                             if hat_count == 0:
                                 is_dpad_button_pressed = any(
@@ -660,7 +660,7 @@ class GamepadThread(threading.Thread):
                 except Exception as tick_exc:
                     consecutive_errors += 1
                     if consecutive_errors >= MAX_CONSECUTIVE_ERRORS:
-                        self.output.put(("gamepad_status", f"手把控制連續失敗 {consecutive_errors} 次，正在重新初始化：{tick_exc}"))
+                        self.output.put(("gamepad_status", f"Controller failed {consecutive_errors} times, reinitializing: {tick_exc}"))
                         try:
                             pygame.joystick.quit()
                             pygame.joystick.init()
@@ -673,12 +673,12 @@ class GamepadThread(threading.Thread):
 
                 time.sleep(0.04)
         except Exception as exc:
-            self.output.put(("gamepad_status", f"手把控制發生錯誤：{exc}"))
+            self.output.put(("gamepad_status", f"Controller error: {exc}"))
         finally:
             try:
                 pygame.quit()
             except Exception as exc:
-                self.output.put(("gamepad_status", f"手把控制關閉時發生錯誤：{exc}"))
+                self.output.put(("gamepad_status", f"Controller shutdown error: {exc}"))
 
 
 def rounded_rectangle_points(x1: int, y1: int, x2: int, y2: int, radius: int) -> list[int]:
@@ -1039,7 +1039,7 @@ class OverlayUI:
         guide.pack(fill="x", pady=(10, 0))
         tk.Label(
             guide,
-            text=f"先開啟並播放 {SUPPORTED_MUSIC_LABEL}，再進 Forza。懸浮播放器只讀取 Windows 目前媒體資訊，不會切換視窗。",
+            text=f"Start your music service and play a song first, then launch Forza. The floating player only reads Windows media info and will not switch windows.",
             font=body_font,
             fg=muted,
             bg="#151515",
@@ -1050,10 +1050,10 @@ class OverlayUI:
             pady=10,
         ).pack(fill="x")
 
-        service_section = make_section("1. 選擇音樂來源", "#ff2d55")
+        service_section = make_section("1. Choose Music Source", "#ff0033")
         tk.Label(
             service_section,
-            text="按哪個服務，就會開啟對應網站，並自動套用紅色、綠色或黑色主題。",
+            text="Click a service to open the website and apply the matching theme color.",
             font=body_font,
             fg=muted,
             bg=panel_bg,
@@ -1066,7 +1066,7 @@ class OverlayUI:
         service_buttons.pack(fill="x")
         make_button(
             service_buttons,
-            "開啟 YouTube Music",
+            "Open YouTube Music",
             self.open_youtube_music,
             bg="#ff0033",
             fg="#ffffff",
@@ -1075,7 +1075,7 @@ class OverlayUI:
         ).grid(row=0, column=0, sticky="nsew", padx=(0, 7), ipady=2)
         make_button(
             service_buttons,
-            "開啟 Spotify",
+            "Open Spotify",
             self.open_spotify,
             bg="#1ed760",
             fg="#07110b",
@@ -1084,7 +1084,7 @@ class OverlayUI:
         ).grid(row=0, column=1, sticky="nsew", padx=7, ipady=2)
         make_button(
             service_buttons,
-            "開啟 Apple Music",
+            "Open Apple Music",
             self.open_apple_music,
             bg="#111111",
             fg="#ffffff",
@@ -1110,8 +1110,8 @@ class OverlayUI:
         )
         self.service_status_label.pack(fill="x", pady=(12, 0))
 
-        now_section = make_section("2. 目前播放", "#1ed760")
-        self.status_text = tk.StringVar(value="正在等待媒體資訊…")
+        now_section = make_section("2. Now Playing", "#1ed760")
+        self.status_text = tk.StringVar(value="Waiting for media info…")
         status = tk.Label(
             now_section,
             textvariable=self.status_text,
@@ -1126,7 +1126,7 @@ class OverlayUI:
         )
         status.pack(fill="x")
 
-        self.gamepad_text = tk.StringVar(value="手把控制：正在偵測控制器…")
+        self.gamepad_text = tk.StringVar(value="Controller: detecting…")
         gamepad_status = tk.Label(
             now_section,
             textvariable=self.gamepad_text,
@@ -1140,20 +1140,20 @@ class OverlayUI:
         )
         gamepad_status.pack(fill="x", pady=(10, 0))
 
-        control_section = make_section("3. 懸浮播放器控制", "#60a5fa")
+        control_section = make_section("3. Floating Player Controls", "#60a5fa")
         actions = tk.Frame(control_section, bg=panel_bg)
         actions.pack(fill="x")
 
         buttons = [
-            ("最小化控制台", self.hide_control_panel),
-            ("顯示 / 隱藏懸浮播放器", self.toggle_overlay),
-            ("調整顯示位置", self.toggle_position_mode),
-            ("儲存目前位置", self.save_overlay_position),
-            ("退出程式", self.quit),
+            ("Minimize Control Panel", self.hide_control_panel),
+            ("Show / Hide Floating Player", self.toggle_overlay),
+            ("Adjust Position", self.toggle_position_mode),
+            ("Save Current Position", self.save_overlay_position),
+            ("Quit", self.quit),
         ]
 
         for index, (label, command) in enumerate(buttons):
-            is_quit = label == "退出程式"
+            is_quit = label == "Quit"
             button = make_button(
                 actions,
                 label,
@@ -1171,24 +1171,24 @@ class OverlayUI:
         actions.columnconfigure(0, weight=1, uniform="actions")
         actions.columnconfigure(1, weight=1, uniform="actions")
 
-        hotkey_section = make_section("遊戲中快捷鍵", "#a78bfa")
+        hotkey_section = make_section("In-Game Shortcuts", "#a78bfa")
         hotkeys = (
-            "Ctrl+Alt+Space    播放 / 暫停\n"
-            "Ctrl+Alt+Right    下一首\n"
-            "Ctrl+Alt+Left     上一首\n"
-            "Ctrl+Alt+Up       音量加\n"
-            "Ctrl+Alt+Down     音量減\n"
-            "Ctrl+Alt+End      靜音\n"
-            "Ctrl+Alt+Home     顯示 / 隱藏懸浮播放器\n"
-            "Ctrl+Alt+H        顯示 / 隱藏控制台\n"
-            "Ctrl+Alt+P        調整懸浮播放器位置\n"
-            "Ctrl+Alt+Q        退出程式\n\n"
-            "手把組合鍵（L3 = 左搖桿按下）\n"
-            "L3 + A            播放 / 暫停\n"
-            "L3 + B            下一首\n"
-            "L3 + X            上一首\n"
-            "L3 + 上鍵         音量加\n"
-            "L3 + 下鍵         音量減"
+            "Ctrl+Alt+Space    Play / Pause\n"
+            "Ctrl+Alt+Right    Next Track\n"
+            "Ctrl+Alt+Left     Previous Track\n"
+            "Ctrl+Alt+Up       Volume Up\n"
+            "Ctrl+Alt+Down     Volume Down\n"
+            "Ctrl+Alt+End      Mute\n"
+            "Ctrl+Alt+Home     Show / Hide Floating Player\n"
+            "Ctrl+Alt+H        Show / Hide Control Panel\n"
+            "Ctrl+Alt+P        Adjust Floating Player Position\n"
+            "Ctrl+Alt+Q        Quit\n\n"
+            "Controller Combos (L3 = Left Stick Press)\n"
+            "L3 + A            Play / Pause\n"
+            "L3 + B            Next Track\n"
+            "L3 + X            Previous Track\n"
+            "L3 + Up           Volume Up\n"
+            "L3 + Down         Volume Down"
         )
         tk.Label(
             hotkey_section,
@@ -1204,7 +1204,7 @@ class OverlayUI:
 
         tk.Label(
             wrapper,
-            text="如果 Forza 使用獨佔全螢幕，懸浮播放器可能無法覆蓋；建議使用無邊框視窗。若 Forza 用系統管理員啟動，本程式也要用系統管理員啟動。",
+            text="If Forza uses exclusive fullscreen, the floating player may not overlay; use Borderless Windowed instead. If Forza runs as administrator, run this app as administrator too.",
             font=("Microsoft JhengHei UI", 9),
             fg=muted,
             bg=page_bg,
@@ -1273,7 +1273,7 @@ class OverlayUI:
         )
         self.overlay_status.pack(side="right")
 
-        self.title_var = tk.StringVar(value="等待音樂播放…")
+        self.title_var = tk.StringVar(value="Waiting for music…")
         self.title_label = tk.Label(
             self.overlay_card,
             textvariable=self.title_var,
@@ -1284,7 +1284,7 @@ class OverlayUI:
         )
         self.title_label.grid(row=1, column=1, sticky="ew", pady=(7, 0))
 
-        self.artist_var = tk.StringVar(value="請先在瀏覽器播放音樂")
+        self.artist_var = tk.StringVar(value="Play music in your browser first")
         self.artist_label = tk.Label(
             self.overlay_card,
             textvariable=self.artist_var,
@@ -1371,7 +1371,7 @@ class OverlayUI:
 
     def get_music_service_status(self) -> str:
         _overlay, _accent, display = self.get_music_service_theme()
-        return f"目前瀏覽器來源：{display} 主題（按上方服務按鈕可切換）"
+        return f"Current browser source: {display} theme (click service buttons above to switch)"
 
     def set_music_service(self, service: str) -> None:
         self.settings["music_service"] = normalize_music_service(service)
@@ -1387,17 +1387,17 @@ class OverlayUI:
         try:
             track = asyncio.run(get_current_track(read_artwork=False))
         except Exception as exc:
-            return False, f"無法讀取 Windows 媒體資訊：{exc}"
+            return False, f"Cannot read Windows media info: {exc}"
 
         if looks_like_supported_music(track):
-            return True, f"已偵測到：{track.title} - {track.artist or track.app_id}"
+            return True, f"Detected: {track.title} - {track.artist or track.app_id}"
 
         if track.status == "NO_SESSION" or track.is_empty:
-            return False, f"尚未偵測到 {SUPPORTED_MUSIC_LABEL} 播放。請登入後播放任一首歌曲。"
+            return False, f"No {SUPPORTED_MUSIC_LABEL} playback detected. Please sign in and play a song."
 
         return False, (
-            f"目前偵測到其他媒體來源，請切到 {SUPPORTED_MUSIC_LABEL} 並開始播放。\n"
-            f"偵測結果：{track.app_id or '未知來源'} / {track.title or '無標題'}"
+            f"Another media source detected. Please switch to {SUPPORTED_MUSIC_LABEL} and start playing.\n"
+            f"Detected: {track.app_id or 'Unknown source'} / {track.title or 'No title'}"
         )
 
     def enforce_music_setup(self) -> None:
@@ -1417,7 +1417,7 @@ class OverlayUI:
 
         setup = tk.Toplevel(self.root)
         self.setup_window = setup
-        setup.title(f"設定 {APP_TITLE}")
+        setup.title(f"Setup {APP_TITLE}")
         setup.geometry("580x440")
         setup.resizable(False, False)
         setup.configure(bg="#121212")
@@ -1430,7 +1430,7 @@ class OverlayUI:
 
         tk.Label(
             content,
-            text="先選擇音樂服務",
+            text="Choose your music service",
             font=("Microsoft JhengHei UI", 18, "bold"),
             fg="#ffffff",
             bg="#121212",
@@ -1440,8 +1440,8 @@ class OverlayUI:
         tk.Label(
             content,
             text=(
-                "這個工具不會要求你輸入帳號密碼。\n"
-                "請在官方音樂服務登入，播放任一首歌曲後，再回來按重新檢查。"
+                "This tool will never ask for your account or password.\n"
+                "Please sign in to your music service, play any song, then come back and click Recheck."
             ),
             font=("Microsoft JhengHei UI", 10),
             fg="#b3b3b3",
@@ -1466,10 +1466,10 @@ class OverlayUI:
         ).pack(fill="x", pady=(0, 16))
 
         steps = (
-            "1. 按下「開啟 YouTube Music」或「開啟 Spotify」。\n"
-            "2. 在瀏覽器或 Spotify 桌面版登入。\n"
-            "3. 播放任一首歌曲，讓播放器開始跑。\n"
-            "4. 回到這裡按「我已登入並播放，重新檢查」。"
+            "1. Click \"Open YouTube Music\" or \"Open Spotify\".\n"
+            "2. Sign in through the browser or Spotify desktop app.\n"
+            "3. Play any song so the player starts running.\n"
+            "4. Come back here and click \"I've signed in, Recheck\"."
         )
         tk.Label(
             content,
@@ -1488,7 +1488,7 @@ class OverlayUI:
 
         tk.Button(
             actions,
-            text="開啟 YouTube Music",
+            text="Open YouTube Music",
             command=self.open_youtube_music,
             font=("Microsoft JhengHei UI", 10, "bold"),
             bg="#ff0033",
@@ -1502,7 +1502,7 @@ class OverlayUI:
 
         tk.Button(
             actions,
-            text="開啟 Spotify",
+            text="Open Spotify",
             command=self.open_spotify,
             font=("Microsoft JhengHei UI", 10, "bold"),
             bg="#1ed760",
@@ -1516,7 +1516,7 @@ class OverlayUI:
 
         tk.Button(
             actions,
-            text="開啟 Apple Music",
+            text="Open Apple Music",
             command=self.open_apple_music,
             font=("Microsoft JhengHei UI", 10, "bold"),
             bg="#111111",
@@ -1530,7 +1530,7 @@ class OverlayUI:
 
         tk.Button(
             content,
-            text="我已登入並播放，重新檢查",
+            text="I've signed in and playing, Recheck",
             command=self.recheck_music_setup,
             font=("Microsoft JhengHei UI", 10, "bold"),
             bg="#242424",
@@ -1544,7 +1544,7 @@ class OverlayUI:
 
         tk.Button(
             content,
-            text="退出程式",
+            text="Quit",
             command=self.quit,
             font=("Microsoft JhengHei UI", 9, "bold"),
             bg="#121212",
@@ -1579,7 +1579,7 @@ class OverlayUI:
                 elif kind == "command":
                     self.handle_command(payload)
                 elif kind == "hotkey_error":
-                    self.status_text.set(f"快捷鍵註冊失敗：{payload}")
+                    self.status_text.set(f"Hotkey registration failed: {payload}")
                 elif kind == "gamepad_status":
                     self.gamepad_text.set(payload)
                 elif kind == "gamepad_inputs":
@@ -1647,16 +1647,16 @@ class OverlayUI:
         source_name, accent = self.get_source_theme(track)
 
         if track.error:
-            title = "讀取媒體資訊失敗"
+            title = "Failed to read media info"
             artist = track.error
             status = "ERROR"
         elif track.is_empty:
-            title = "等待音樂播放…"
-            artist = f"請先登入並播放 {SUPPORTED_MUSIC_LABEL}"
+            title = "Waiting for music…"
+            artist = f"Please sign in and play {SUPPORTED_MUSIC_LABEL}"
             status = "NO MEDIA"
         else:
-            title = track.title or "未知歌曲"
-            artist = track.artist or track.album or track.app_id or "未知來源"
+            title = track.title or "Unknown track"
+            artist = track.artist or track.album or track.app_id or "Unknown source"
             status = track.status.replace("_", " ")
 
         self.source_dot.configure(fg=accent)
@@ -1683,12 +1683,12 @@ class OverlayUI:
         timeline = (
             f"{format_time(position)} / {format_time(track.duration_seconds)}"
             if track.duration_seconds > 0
-            else "無時間資料"
+            else "No time data"
         )
         self.status_text.set(
-            f"目前播放：{title}\n"
-            f"演出者：{artist}\n"
-            f"來源：{app}    狀態：{status}    進度：{timeline}"
+            f"Now playing: {title}\n"
+            f"Artist: {artist}\n"
+            f"Source: {app}    Status: {status}    Progress: {timeline}"
         )
 
     def handle_command(self, command: str) -> None:
@@ -1727,8 +1727,8 @@ class OverlayUI:
             self.overlay_visible = True
             self.overlay.deiconify()
             self.overlay_card.configure(highlightbackground="#ff0033", highlightthickness=2)
-            self.source_var.set("移動位置")
-            self.status_var.set("拖曳後放開")
+            self.source_var.set("Move Position")
+            self.status_var.set("Drag to move")
         else:
             self.overlay_card.configure(highlightbackground="#2a2a2a", highlightthickness=1)
             self.save_overlay_position(show_message=False)
@@ -1759,7 +1759,7 @@ class OverlayUI:
         self.settings["overlay_y"] = int(self.overlay.winfo_y())
         save_settings(self.settings)
         if show_message:
-            messagebox.showinfo(APP_TITLE, "懸浮播放器位置已儲存。")
+            messagebox.showinfo(APP_TITLE, "Floating player position saved.")
 
     def hide_control_panel(self) -> None:
         self.root.iconify()
@@ -1781,7 +1781,7 @@ class OverlayUI:
             try:
                 self.setup_window.grab_release()
             except tk.TclError as exc:
-                self.status_text.set(f"關閉設定視窗時發生錯誤：{exc}")
+                self.status_text.set(f"Error closing setup window: {exc}")
             self.setup_window.destroy()
         self.root.after(100, self.root.destroy)
 
@@ -2031,7 +2031,7 @@ def main() -> int:
     output: queue.Queue = queue.Queue()
     mutex_handle = acquire_single_instance_mutex()
     if mutex_handle is None:
-        messagebox.showinfo(APP_TITLE, f"{APP_TITLE} 已經在執行。")
+        messagebox.showinfo(APP_TITLE, f"{APP_TITLE} is already running.")
         return 0
 
     root = tk.Tk()

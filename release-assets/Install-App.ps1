@@ -41,11 +41,10 @@ function ConvertFrom-Utf8Base64 {
     return [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($Value))
 }
 
-# Keep this script ASCII-safe for Windows PowerShell 5.1, which may read UTF-8
-# files without a BOM as the system ANSI code page.
-$appShortcutName = ConvertFrom-Utf8Base64 'Rm9yemEg6Z+z5qiC5oe45rWu5pKt5pS+5Zmo'
-$overlayOnlySuffix = ConvertFrom-Utf8Base64 'IC0g5Y+q6aGv56S65pKt5pS+5Zmo'
-$uninstallPrefix = ConvertFrom-Utf8Base64 '6Kej6Zmk5a6J6KOdIA=='
+# English version: use plain ASCII names
+$appShortcutName = 'Forza Music Floating Player'
+$overlayOnlySuffix = ' - Overlay Only'
+$uninstallPrefix = 'Uninstall '
 $startMenu = Join-Path ([Environment]::GetFolderPath('Programs')) $appShortcutName
 $legacyDesktopShortcut = Join-Path $desktop 'Forza Music Overlay.lnk'
 $legacyStartMenu = Join-Path ([Environment]::GetFolderPath('Programs')) 'Forza Music Overlay'

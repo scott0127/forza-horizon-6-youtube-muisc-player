@@ -301,7 +301,7 @@ async function createWindows(): Promise<void> {
     height: 760,
     minWidth: 860,
     minHeight: 620,
-    title: 'Forza 音樂懸浮播放器',
+    title: 'Forza Music Floating Player',
     icon: appIconPath(),
     show: !startOverlayOnly,
     backgroundColor: '#0c111b',

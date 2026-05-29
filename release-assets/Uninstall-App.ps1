@@ -7,9 +7,8 @@ function ConvertFrom-Utf8Base64 {
     return [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($Value))
 }
 
-# Keep this script ASCII-safe for Windows PowerShell 5.1, which may read UTF-8
-# files without a BOM as the system ANSI code page.
-$appShortcutName = ConvertFrom-Utf8Base64 'Rm9yemEg6Z+z5qiC5oe45rWu5pKt5pS+5Zmo'
+# English version: use plain ASCII name
+$appShortcutName = 'Forza Music Floating Player'
 $desktopShortcut = Join-Path ([Environment]::GetFolderPath('Desktop')) "$appShortcutName.lnk"
 $legacyDesktopShortcut = Join-Path ([Environment]::GetFolderPath('Desktop')) 'Forza Music Overlay.lnk'
 $startMenu = Join-Path ([Environment]::GetFolderPath('Programs')) $appShortcutName

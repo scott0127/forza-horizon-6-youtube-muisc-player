@@ -40,8 +40,8 @@ const PLAYER_SCALE_STEP = 0.05
 type ControllerButton = 'L3' | 'L3_ACTIVE' | 'A' | 'B' | 'X' | 'UP' | 'DOWN'
 const view = new URLSearchParams(window.location.search).get('view') === 'player' ? 'player' : 'control'
 const now = ref(Date.now() / 1000)
-const backendStatus = ref('後端啟動中')
-const gamepadStatus = ref('手把狀態尚未回報')
+const backendStatus = ref('Backend starting')
+const gamepadStatus = ref('Controller status not reported')
 const lastMessage = ref('')
 const positionMode = ref(false)
 const themeMode = ref<ThemeMode>('dark')
@@ -87,7 +87,7 @@ const visibleAccent = computed(() => {
 
   return accent.value
 })
-const sourceDisplayLabel = computed(() => (isIdle.value ? '待機中' : track.value.sourceLabel))
+const sourceDisplayLabel = computed(() => (isIdle.value ? 'Standby' : track.value.sourceLabel))
 const trackContentKey = computed(() =>
   [
     isIdle.value ? 'idle' : 'playing',
@@ -107,15 +107,15 @@ const serviceName = computed(() => {
 })
 
 const displayTitle = computed(() => {
-  if (track.value.error) return '讀取媒體資訊失敗'
-  if (track.value.isEmpty || !track.value.title) return '等待音樂播放'
+  if (track.value.error) return 'Failed to read media info'
+  if (track.value.isEmpty || !track.value.title) return 'Waiting for music'
   return track.value.title
 })
 
 const displayArtist = computed(() => {
   if (track.value.error) return track.value.error
-  if (track.value.isEmpty) return '請先登入並播放 YouTube Music、Spotify 或 Apple Music'
-  return track.value.artist || track.value.album || track.value.appId || '未知來源'
+  if (track.value.isEmpty) return 'Please sign in and play YouTube Music, Spotify, or Apple Music'
+  return track.value.artist || track.value.album || track.value.appId || 'Unknown source'
 })
 
 const titleChars = computed(() => displayTitle.value.split(''))
@@ -148,23 +148,23 @@ const themeClass = computed(() => {
 })
 const playerScalePercent = computed(() => Math.round(playerScale.value * 100))
 const keyboardShortcuts = [
-  { keys: 'Ctrl+Alt+Space', action: '播放 / 暫停' },
-  { keys: 'Ctrl+Alt+Right', action: '下一首' },
-  { keys: 'Ctrl+Alt+Left', action: '上一首' },
-  { keys: 'Ctrl+Alt+Up', action: '音量加' },
-  { keys: 'Ctrl+Alt+Down', action: '音量減' },
-  { keys: 'Ctrl+Alt+End', action: '靜音' },
-  { keys: 'Ctrl+Alt+Home', action: '顯示 / 隱藏懸浮播放器' },
-  { keys: 'Ctrl+Alt+P', action: '調整懸浮位置' },
-  { keys: 'Ctrl+Alt+H', action: '顯示 / 隱藏控制台' },
-  { keys: 'Ctrl+Alt+Q', action: '退出程式' }
+  { keys: 'Ctrl+Alt+Space', action: 'Play / Pause' },
+  { keys: 'Ctrl+Alt+Right', action: 'Next Track' },
+  { keys: 'Ctrl+Alt+Left', action: 'Previous Track' },
+  { keys: 'Ctrl+Alt+Up', action: 'Volume Up' },
+  { keys: 'Ctrl+Alt+Down', action: 'Volume Down' },
+  { keys: 'Ctrl+Alt+End', action: 'Mute' },
+  { keys: 'Ctrl+Alt+Home', action: 'Show / Hide Floating Player' },
+  { keys: 'Ctrl+Alt+P', action: 'Adjust Position' },
+  { keys: 'Ctrl+Alt+H', action: 'Show / Hide Control Panel' },
+  { keys: 'Ctrl+Alt+Q', action: 'Quit' }
 ]
 const controllerShortcuts: Array<{ buttons: ControllerButton[]; action: string }> = [
-  { buttons: ['L3', 'A'], action: '播放 / 暫停' },
-  { buttons: ['L3', 'B'], action: '下一首' },
-  { buttons: ['L3', 'X'], action: '上一首' },
-  { buttons: ['L3', 'UP'], action: '調高音量' },
-  { buttons: ['L3', 'DOWN'], action: '調低音量' }
+  { buttons: ['L3', 'A'], action: 'Play / Pause' },
+  { buttons: ['L3', 'B'], action: 'Next Track' },
+  { buttons: ['L3', 'X'], action: 'Previous Track' },
+  { buttons: ['L3', 'UP'], action: 'Volume Up' },
+  { buttons: ['L3', 'DOWN'], action: 'Volume Down' }
 ]
 const controllerButtonAssets: Record<ControllerButton, string> = {
   L3: xboxL3,
@@ -329,9 +329,9 @@ onMounted(async () => {
     } else if (event.type === 'hotkey:error' && event.message) {
       lastMessage.value = event.message
     } else if (event.type === 'backend:exit') {
-      backendStatus.value = `後端已停止 (${event.code ?? 'unknown'})`
+      backendStatus.value = `Backend stopped (${event.code ?? 'unknown'})`
     } else if (event.type === 'command' && event.command === 'toggle_position_mode') {
-      lastMessage.value = positionMode.value ? '可拖曳左上角懸浮播放器調整位置' : '懸浮播放器位置已儲存'
+      lastMessage.value = positionMode.value ? 'Drag the floating player to adjust position' : 'Floating player position saved'
     } else if (event.message) {
       lastMessage.value = event.message
     }
@@ -339,7 +339,7 @@ onMounted(async () => {
 
   removePositionModeListener = window.forzaApi.onPositionMode((event) => {
     positionMode.value = event.enabled
-    lastMessage.value = event.enabled ? '可拖曳左上角懸浮播放器調整位置' : '懸浮播放器位置已儲存'
+    lastMessage.value = event.enabled ? 'Drag the floating player to adjust position' : 'Floating player position saved'
   })
 
   removeThemeModeListener = window.forzaApi.onThemeMode((event) => {
@@ -385,14 +385,14 @@ onUnmounted(() => {
       <section class="hero-band">
         <div>
           <p class="eyebrow">Forza Music</p>
-          <h1>音樂懸浮播放器</h1>
-          <p class="summary">啟動音樂服務後進入 Forza，歌曲資訊與控制會留在遊戲內，不需要切出視窗。</p>
+          <h1>Music Floating Player</h1>
+          <p class="summary">Start your music service, then launch Forza. Track info and controls stay in-game without switching windows.</p>
         </div>
         <div class="toolbar-cluster">
           <div class="theme-toggle" aria-label="主題切換">
             <button :class="{ selected: themeMode === 'dark' }" type="button" @click="setThemeMode('dark')">
               <Moon :size="15" />
-              暗黑
+              Dark
             </button>
             <button :class="{ selected: themeMode === 'luxury' }" type="button" @click="setThemeMode('luxury')">
               <Sparkles :size="15" />
@@ -400,7 +400,7 @@ onUnmounted(() => {
             </button>
             <button :class="{ selected: themeMode === 'radio' }" type="button" @click="setThemeMode('radio')">
               <Radio :size="15" />
-              無邊框電台
+              Borderless Radio
             </button>
           </div>
           <div class="status-pill" :style="{ borderColor: visibleAccent, color: visibleAccent }">
@@ -412,14 +412,14 @@ onUnmounted(() => {
 
       <section class="sponsor-panel panel">
         <div class="sponsor-copy">
-          <p class="eyebrow">贊助支持</p>
-          <h2>支持 Forza Music 持續更新</h2>
-          <p>這個工具是免費的。如果想支持我，或是工具有幫到你，可以請還在讀碩士的我喝杯咖啡<br> QR Code 可掃描，按鈕會開啟贊助頁。</p>
+          <p class="eyebrow">Support</p>
+          <h2>Support Forza Music Development</h2>
+          <p>This tool is free. If you find it helpful, consider buying a coffee for this grad student.<br> Scan the QR code or click the button to donate.</p>
         </div>
         <div class="sponsor-actions">
           <img class="sponsor-qr" :src="bmcQr" alt="Buy Me a Coffee QR Code" />
           <a class="sponsor-button" :href="SPONSOR_URL" target="_blank" rel="noreferrer">
-            贊助我
+            Donate
           </a>
         </div>
       </section>
@@ -428,34 +428,34 @@ onUnmounted(() => {
       <div class="section-title">
         <Music2 :size="18" />
         <div>
-          <h2>選擇音樂來源</h2>
-          <p>按下服務後會開啟對應網站，並自動套用紅色、綠色或黑色主題。</p>
+          <h2>Choose Music Source</h2>
+          <p>Click a service to open the website and apply the matching theme color.</p>
         </div>
       </div>
       <div class="service-grid">
         <button class="service-button youtube" type="button" @click="openService('open:youtube')">
           <ExternalLink :size="19" />
-          開啟 YouTube Music
+          Open YouTube Music
         </button>
         <button class="service-button spotify" type="button" @click="openService('open:spotify')">
           <ExternalLink :size="19" />
-          開啟 Spotify
+          Open Spotify
         </button>
         <div class="service-button-wrapper">
           <button class="service-button apple" type="button" @click="openService('open:apple')">
             <ExternalLink :size="19" />
-            開啟 Apple Music
+            Open Apple Music
           </button>
           
           <Transition name="tip-fade">
             <div v-if="showSpotifyTip" class="spotify-tip-box">
               <div class="tip-header">
-                <span class="tip-badge">💡 Spotify Premium 遙控功能</span>
-                <button class="tip-close-btn" type="button" aria-label="關閉提示" @click.stop="closeSpotifyTip">
+                <span class="tip-badge">💡 Spotify Premium Remote Feature</span>
+                <button class="tip-close-btn" type="button" aria-label="Close tip" @click.stop="closeSpotifyTip">
                   &times;
                 </button>
               </div>
-              <p class="tip-text">提醒您！有 Spotify Premium 即可在任何裝置同步遙控控制此電台</p>
+              <p class="tip-text">Reminder! With Spotify Premium, you can remotely control this radio from any device.</p>
             </div>
           </Transition>
 
@@ -530,12 +530,12 @@ onUnmounted(() => {
     </section>
 
     <section id="controls" class="action-grid">
-      <button type="button" @click="command('media:previous')"><ChevronsLeft :size="20" />上一首</button>
-      <button type="button" @click="command('media:playPause')"><CirclePlay :size="20" />播放 / 暫停</button>
-      <button type="button" @click="command('media:next')"><ChevronsRight :size="20" />下一首</button>
-      <button type="button" @click="togglePlayerWindow"><MonitorUp :size="20" />顯示懸浮播放器</button>
+      <button type="button" @click="command('media:previous')"><ChevronsLeft :size="20" />Previous</button>
+      <button type="button" @click="command('media:playPause')"><CirclePlay :size="20" />Play / Pause</button>
+      <button type="button" @click="command('media:next')"><ChevronsRight :size="20" />Next</button>
+      <button type="button" @click="togglePlayerWindow"><MonitorUp :size="20" />Show Floating Player</button>
       <button :class="{ active: positionMode }" type="button" @click="togglePositionMode">
-        <Move :size="20" />調整懸浮位置
+        <Move :size="20" />Adjust Position
       </button>
     </section>
 
@@ -543,12 +543,12 @@ onUnmounted(() => {
       <div class="section-title">
         <MonitorUp :size="18" />
         <div>
-          <h2>懸浮播放器大小</h2>
-          <p>調整左上角播放器縮放，會立即套用並記住設定。</p>
+          <h2>Floating Player Size</h2>
+          <p>Adjust the floating player scale. Changes are applied immediately and saved.</p>
         </div>
       </div>
       <div class="scale-control">
-        <button type="button" aria-label="縮小懸浮播放器" @click="adjustPlayerScale(-PLAYER_SCALE_STEP)">
+        <button type="button" aria-label="Shrink floating player" @click="adjustPlayerScale(-PLAYER_SCALE_STEP)">
           <Minus :size="17" />
         </button>
         <label class="scale-slider" for="player-scale">
@@ -563,12 +563,12 @@ onUnmounted(() => {
           />
           <span>{{ playerScalePercent }}%</span>
         </label>
-        <button type="button" aria-label="放大懸浮播放器" @click="adjustPlayerScale(PLAYER_SCALE_STEP)">
+        <button type="button" aria-label="Enlarge floating player" @click="adjustPlayerScale(PLAYER_SCALE_STEP)">
           <Plus :size="17" />
         </button>
         <button type="button" class="scale-reset" @click="resetPlayerScale">
           <RotateCcw :size="16" />
-          重設
+          Reset
         </button>
       </div>
     </section>
@@ -577,13 +577,13 @@ onUnmounted(() => {
       <div class="section-title">
         <Gamepad2 :size="18" />
         <div>
-          <h2>遊戲中控制</h2>
+          <h2>In-Game Controls</h2>
           <p>{{ gamepadStatus }}</p>
         </div>
       </div>
       <div class="control-guides">
         <div class="guide-column">
-          <div class="guide-heading">鍵盤快捷鍵</div>
+          <div class="guide-heading">Keyboard Shortcuts</div>
           <div class="shortcut-grid keyboard-grid">
             <template v-for="shortcut in keyboardShortcuts" :key="shortcut.keys">
               <span class="key-pill">{{ shortcut.keys }}</span>
@@ -592,8 +592,8 @@ onUnmounted(() => {
           </div>
         </div>
         <div class="guide-column">
-          <div class="guide-heading">手把組合鍵</div>
-          <p class="guide-note">按住 L3（左搖桿按下），再按下對應按鍵執行下列功能。</p>
+          <div class="guide-heading">Controller Combos</div>
+          <p class="guide-note">Hold L3 (left stick press), then press the corresponding button.</p>
           <div class="controller-grid">
             <div v-for="(shortcut, shortcutIdx) in controllerShortcuts" :key="shortcut.buttons.join('+')" class="controller-row">
               <span class="controller-combo" :aria-label="shortcut.buttons.join(' + ')">
@@ -609,7 +609,7 @@ onUnmounted(() => {
                   />
                   <!-- Permanent tooltip on L3 of the first row -->
                   <span v-if="shortcutIdx === 0 && button === 'L3'" class="permanent-tooltip">
-                    左蘑菇頭按下
+                    Left Stick Press
                   </span>
                 </span>
               </span>
@@ -624,31 +624,31 @@ onUnmounted(() => {
     <section id="membership" class="membership-cta panel">
       <div>
         <p class="eyebrow">Private Listening Suite</p>
-        <h2>專屬沉浸模式</h2>
-        <p>奢華玻璃主題提供更柔和的視覺深度、精品展示感和遊戲內低干擾辨識度。</p>
+        <h2>Immersive Mode</h2>
+        <p>The luxury glass theme provides softer visual depth, boutique presentation, and low-distraction in-game visibility.</p>
       </div>
       <button type="button" @click="togglePlayerWindow">
         <Sparkles :size="18" />
-        啟用展示視窗
+        Enable Showcase Window
       </button>
     </section>
 
     <section class="footer-actions">
-      <button type="button" @click="command('media:volumeDown')"><Volume2 :size="18" />音量減</button>
-      <button type="button" @click="command('media:volumeUp')"><Volume2 :size="18" />音量加</button>
-      <button type="button" @click="command('media:mute')"><VolumeX :size="18" />靜音</button>
-      <button class="danger" type="button" @click="command('app:quit')"><Power :size="18" />退出</button>
+      <button type="button" @click="command('media:volumeDown')"><Volume2 :size="18" />Vol Down</button>
+      <button type="button" @click="command('media:volumeUp')"><Volume2 :size="18" />Vol Up</button>
+      <button type="button" @click="command('media:mute')"><VolumeX :size="18" />Mute</button>
+      <button class="danger" type="button" @click="command('app:quit')"><Power :size="18" />Quit</button>
     </section>
 
     <footer class="app-footer">
-      <span>作者：Scott Lin</span>
-      <span>
-        贊助我：
-        <a :href="SPONSOR_URL" target="_blank" rel="noreferrer">
+        <span>Author: Scott Lin</span>
+        <span>
+          Support me:
+          <a :href="SPONSOR_URL" target="_blank" rel="noreferrer">
           https://buymeacoffee.com/scott5497
         </a>
       </span>
-      <span>聯繫我：<a href="mailto:scott5497ify@gmail.com">scott5497ify@gmail.com</a></span>
+        <span>Contact: <a href="mailto:scott5497ify@gmail.com">scott5497ify@gmail.com</a></span>
     </footer>
     </div>
   </main>
@@ -692,7 +692,7 @@ onUnmounted(() => {
         </Transition>
       </div>
       <span class="radio-time">{{ combinedTimeLabel }}</span>
-      <div v-if="positionMode" class="drag-chip">拖曳調整位置</div>
+      <div v-if="positionMode" class="drag-chip">Drag to adjust position</div>
       <div class="radio-progress">
         <div :style="{ width: progressPercent }"></div>
       </div>
@@ -737,7 +737,7 @@ onUnmounted(() => {
           </Transition>
         </div>
       </div>
-      <div v-if="positionMode" class="drag-chip">拖曳調整位置</div>
+      <div v-if="positionMode" class="drag-chip">Drag to adjust position</div>
       <div class="floating-time combined-time">
         {{ combinedTimeLabel }}
       </div>
