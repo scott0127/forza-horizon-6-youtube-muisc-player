@@ -35,7 +35,7 @@ if (-not $SkipBuild) {
 
     & $venvPython -m PyInstaller `
         --clean `
-        --onefile `
+        --onedir `
         --name ForzaMusicOverlayBackend `
         --collect-submodules winsdk `
         --collect-data pygame `
@@ -49,7 +49,7 @@ if (-not $SkipBuild) {
 $electronDist = Join-Path $scriptDir 'electron-app\node_modules\electron\dist'
 $electronExe = Join-Path $electronDist 'electron.exe'
 $appOut = Join-Path $scriptDir 'electron-app\out'
-$backendExe = Join-Path $scriptDir 'dist\ForzaMusicOverlayBackend.exe'
+$backendExe = Join-Path $scriptDir 'dist\ForzaMusicOverlayBackend\ForzaMusicOverlayBackend.exe'
 
 foreach ($required in @($electronExe, $appOut, $backendExe)) {
     if (-not (Test-Path -LiteralPath $required)) {
@@ -112,7 +112,8 @@ Copy-Item -LiteralPath $appOut -Destination $appDir -Recurse -Force
 
 $backendDir = Join-Path $appFilesDir 'resources\backend'
 New-Item -ItemType Directory -Force -Path $backendDir | Out-Null
-Copy-Item -LiteralPath $backendExe -Destination $backendDir -Force
+$backendSourceDir = Join-Path $scriptDir 'dist\ForzaMusicOverlayBackend'
+Copy-Item -Path "$backendSourceDir\*" -Destination $backendDir -Recurse -Force
 
 $appAssetsDir = Join-Path $appFilesDir 'resources\app-assets'
 New-Item -ItemType Directory -Force -Path $appAssetsDir | Out-Null
