@@ -472,8 +472,8 @@ class HotkeyThread(threading.Thread):
 
 class GamepadThread(threading.Thread):
     # L3（左搖桿按下）作為修飾鍵，避免與 Forza 的 LB（離合器）衝突。
-    # Xbox: L3 = 按鈕索引 8, PlayStation: L3 = 按鈕索引 11。
-    L3_BUTTONS = (8, 11)
+    # Xbox: L3 = 按鈕索引 8, PlayStation: L3 = 按鈕索引 10 或 11。
+    L3_BUTTONS = (8, 10, 11)
 
     BUTTON_COMBOS = (
         ("L3 + A", L3_BUTTONS, 0, Win32.VK_MEDIA_PLAY_PAUSE),
@@ -509,6 +509,7 @@ class GamepadThread(threading.Thread):
 
         pressed_combos: set[tuple[int, str]] = set()
         joysticks = []
+        joystick_profiles = {}
         last_count = -1
         last_pressed_inputs: set = set()
         consecutive_errors = 0
@@ -525,18 +526,48 @@ class GamepadThread(threading.Thread):
 
                     if count != last_count:
                         joysticks = []
+                        joystick_profiles = {}
                         for index in range(count):
                             joystick = pygame.joystick.Joystick(index)
                             joystick.init()
                             joysticks.append(joystick)
+                            
+                            # Detect controller type by device name
+                            name = joystick.get_name().lower()
+                            is_ps = any(x in name for x in ("playstation", "dualshock", "dualsense", "wireless controller", "sony", "ps5", "ps4"))
+                            is_switch = any(x in name for x in ("switch", "nintendo"))
+                            
+                            if is_ps:
+                                profile = {
+                                    "type": "PlayStation",
+                                    "l3_buttons": (10, 11),  # 10 is standard PS L3, 11 for offset Bluetooth drivers
+                                    "dpad_up": 11,
+                                    "dpad_down": 12,
+                                }
+                            elif is_switch:
+                                profile = {
+                                    "type": "Nintendo Switch",
+                                    "l3_buttons": (10, 11),
+                                    "dpad_up": 11,
+                                    "dpad_down": 12,
+                                }
+                            else:
+                                profile = {
+                                    "type": "Xbox",
+                                    "l3_buttons": (8,),
+                                    "dpad_up": 11,
+                                    "dpad_down": 12,
+                                }
+                            joystick_profiles[index] = profile
 
                         if count:
                             info_parts = []
-                            for joystick in joysticks:
+                            for idx, joystick in enumerate(joysticks):
                                 name = joystick.get_name()
                                 n_buttons = joystick.get_numbuttons()
                                 n_hats = joystick.get_numhats()
-                                info_parts.append(f"{name} (按鈕:{n_buttons} hat:{n_hats})")
+                                p_type = joystick_profiles.get(idx, {}).get("type", "Unknown")
+                                info_parts.append(f"{name} [{p_type}] (按鈕:{n_buttons} hat:{n_hats})")
                             self.output.put(("gamepad_status", f"手把控制已啟用：{', '.join(info_parts)}"))
                         else:
                             self.output.put(("gamepad_status", "手把控制：未偵測到控制器"))
@@ -552,8 +583,16 @@ class GamepadThread(threading.Thread):
                         except Exception:
                             continue
 
+                        profile = joystick_profiles.get(joy_index, {
+                            "type": "Xbox",
+                            "l3_buttons": (8, 10, 11),
+                            "dpad_up": 11,
+                            "dpad_down": 12,
+                        })
+                        l3_buttons = profile["l3_buttons"]
+
                         # 1. 偵測 L3
-                        for btn in self.L3_BUTTONS:
+                        for btn in l3_buttons:
                             if btn < button_count and joystick.get_button(btn):
                                 pressed_this_tick.add("L3")
                                 break
@@ -577,7 +616,8 @@ class GamepadThread(threading.Thread):
                                 is_up = True
                                 break
                         if not is_up and hat_count == 0:
-                            if 11 < button_count and joystick.get_button(11):
+                            dpad_up_btn = profile["dpad_up"]
+                            if dpad_up_btn < button_count and joystick.get_button(dpad_up_btn):
                                 is_up = True
                         if is_up:
                             pressed_this_tick.add("UP")
@@ -589,16 +629,17 @@ class GamepadThread(threading.Thread):
                                 is_down = True
                                 break
                         if not is_down and hat_count == 0:
-                            if 12 < button_count and joystick.get_button(12):
+                            dpad_down_btn = profile["dpad_down"]
+                            if dpad_down_btn < button_count and joystick.get_button(dpad_down_btn):
                                 is_down = True
                         if is_down:
                             pressed_this_tick.add("DOWN")
 
-                        for label, modifier_buttons, action_button, media_key in self.BUTTON_COMBOS:
+                        for label, _, action_button, media_key in self.BUTTON_COMBOS:
                             combo_id = (joy_index, label)
                             modifier_pressed = any(
                                 btn < button_count and joystick.get_button(btn)
-                                for btn in modifier_buttons
+                                for btn in l3_buttons
                             )
                             is_pressed = (
                                 modifier_pressed
@@ -615,11 +656,11 @@ class GamepadThread(threading.Thread):
                             elif not is_pressed and combo_id in pressed_combos:
                                 pressed_combos.discard(combo_id)
 
-                        for label, modifier_buttons, hat_value, media_key in self.HAT_COMBOS:
+                        for label, _, hat_value, media_key in self.HAT_COMBOS:
                             combo_id = (joy_index, label)
                             modifier_pressed = any(
                                 btn < button_count and joystick.get_button(btn)
-                                for btn in modifier_buttons
+                                for btn in l3_buttons
                             )
 
                             # Xbox 風格：D-Pad 透過 hat 報告
