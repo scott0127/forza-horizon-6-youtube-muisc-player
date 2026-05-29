@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, shell } from 'electron'
+import { app, BrowserWindow, ipcMain, shell, Tray, Menu } from 'electron'
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
@@ -11,6 +11,7 @@ let playerWindow: BrowserWindow | null = null
 let backend: ChildProcessWithoutNullStreams | null = null
 let positionMode = false
 let isQuitting = false
+let tray: Tray | null = null
 
 const isDev = !app.isPackaged
 const startOverlayOnly = process.argv.includes('--overlay-only')
@@ -270,6 +271,11 @@ function quitApplication(): void {
 
   sendExistingBackendCommand({ type: 'app:quit' })
 
+  if (tray) {
+    tray.destroy()
+    tray = null
+  }
+
   for (const win of [playerWindow, controlWindow]) {
     if (win && !win.isDestroyed()) {
       win.destroy()
@@ -282,6 +288,71 @@ function quitApplication(): void {
     }
     app.exit(0)
   }, 80)
+}
+
+function showControlWindow(): void {
+  if (!controlWindow || controlWindow.isDestroyed()) return
+
+  if (!controlWindow.isVisible()) {
+    controlWindow.show()
+  }
+  if (controlWindow.isMinimized()) {
+    controlWindow.restore()
+  }
+  controlWindow.focus()
+}
+
+function updateTrayMenu(): void {
+  if (!tray) return
+
+  const contextMenu = Menu.buildFromTemplate([
+    {
+      label: '顯示控制面板 / Show Control Panel',
+      click: (): void => {
+        showControlWindow()
+      }
+    },
+    {
+      label: '顯示/隱藏懸浮播放器 / Toggle Overlay',
+      click: (): void => {
+        togglePlayerWindow()
+      }
+    },
+    {
+      label: '調整懸浮播放器位置 / Adjust Overlay Position',
+      type: 'checkbox',
+      checked: positionMode,
+      click: (): void => {
+        setPositionMode(!positionMode)
+      }
+    },
+    { type: 'separator' },
+    {
+      label: '結束程式 / Quit',
+      click: (): void => {
+        quitApplication()
+      }
+    }
+  ])
+
+  tray.setContextMenu(contextMenu)
+}
+
+function createTray(): void {
+  if (tray) return
+
+  tray = new Tray(appIconPath())
+  tray.setToolTip('Forza Music Floating Player')
+
+  tray.on('click', () => {
+    showControlWindow()
+  })
+
+  tray.on('double-click', () => {
+    showControlWindow()
+  })
+
+  updateTrayMenu()
 }
 
 async function createWindows(): Promise<void> {
@@ -353,7 +424,7 @@ async function createWindows(): Promise<void> {
     if (isQuitting) return
 
     event.preventDefault()
-    quitApplication()
+    controlWindow?.hide()
   })
 
   controlWindow.webContents.setWindowOpenHandler(({ url }) => {
@@ -371,11 +442,10 @@ async function createWindows(): Promise<void> {
 function toggleControlWindow(): void {
   if (!controlWindow) return
 
-  if (controlWindow.isVisible() && !controlWindow.isMinimized()) {
-    controlWindow.minimize()
+  if (controlWindow.isVisible()) {
+    controlWindow.hide()
   } else {
-    controlWindow.show()
-    controlWindow.focus()
+    showControlWindow()
   }
 }
 
@@ -404,6 +474,7 @@ function setPositionMode(enabled: boolean): void {
   }
 
   sendToRenderers('ui:position-mode', { enabled })
+  updateTrayMenu()
 
   if (!enabled) {
     savePlayerBounds()
@@ -413,6 +484,7 @@ function setPositionMode(enabled: boolean): void {
 app.whenReady().then(async () => {
   app.setAppUserModelId('tw.scott.forza-music-floating-player')
   await createWindows()
+  createTray()
   startBackend()
 
   setTimeout(refreshPlayerWindow, 0)
@@ -455,8 +527,11 @@ ipcMain.handle('backend:command', (_event, command: Record<string, unknown>) => 
 })
 
 ipcMain.handle('window:show-control', () => {
-  controlWindow?.show()
-  controlWindow?.focus()
+  showControlWindow()
+})
+
+ipcMain.handle('window:hide-control', () => {
+  controlWindow?.hide()
 })
 
 ipcMain.handle('window:toggle-player', () => {

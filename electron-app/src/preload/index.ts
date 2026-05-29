@@ -27,6 +27,9 @@ contextBridge.exposeInMainWorld('forzaApi', {
   showControlWindow() {
     return ipcRenderer.invoke('window:show-control')
   },
+  hideControlWindow() {
+    return ipcRenderer.invoke('window:hide-control')
+  },
   togglePlayerWindow() {
     return ipcRenderer.invoke('window:toggle-player')
   },
