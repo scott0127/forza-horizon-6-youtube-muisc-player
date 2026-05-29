@@ -28,6 +28,9 @@ import xboxL3 from './assets/xbox-l3.png'
 import xboxL3Active from './assets/xbox-l3-active.png'
 import xboxUp from './assets/xbox-up.png'
 import xboxX from './assets/xbox-x.svg'
+import psCross from './assets/ps-cross.svg'
+import psCircle from './assets/ps-circle.svg'
+import psSquare from './assets/ps-square.svg'
 import type { BackendEvent, ThemeMode, TrackState } from './types'
 
 const IDLE_ACCENT = '#8b5cf6'
@@ -42,6 +45,9 @@ const view = new URLSearchParams(window.location.search).get('view') === 'player
 const now = ref(Date.now() / 1000)
 const backendStatus = ref('Backend starting')
 const gamepadStatus = ref('Controller status not reported')
+const isPlayStation = computed(() => {
+  return gamepadStatus.value.toLowerCase().includes('playstation')
+})
 const lastMessage = ref('')
 const positionMode = ref(false)
 const themeMode = ref<ThemeMode>('dark')
@@ -166,15 +172,18 @@ const controllerShortcuts: Array<{ buttons: ControllerButton[]; action: string }
   { buttons: ['L3', 'UP'], action: 'Volume Up' },
   { buttons: ['L3', 'DOWN'], action: 'Volume Down' }
 ]
-const controllerButtonAssets: Record<ControllerButton, string> = {
-  L3: xboxL3,
-  L3_ACTIVE: xboxL3Active,
-  A: xboxA,
-  B: xboxB,
-  X: xboxX,
-  UP: xboxUp,
-  DOWN: xboxDown
-}
+const controllerButtonAssets = computed<Record<ControllerButton, string>>(() => {
+  const isPs = isPlayStation.value
+  return {
+    L3: xboxL3,
+    L3_ACTIVE: xboxL3Active,
+    A: isPs ? psCross : xboxA,
+    B: isPs ? psCircle : xboxB,
+    X: isPs ? psSquare : xboxX,
+    UP: xboxUp,
+    DOWN: xboxDown
+  }
+})
 
 function formatTime(seconds: number): string {
   const total = Math.max(0, Math.floor(seconds))
