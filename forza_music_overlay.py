@@ -538,12 +538,20 @@ class GamepadThread(threading.Thread):
                             is_switch = any(x in name for x in ("switch", "nintendo"))
                             
                             if is_ps:
-                                profile = {
-                                    "type": "PlayStation",
-                                    "l3_buttons": (10, 11),  # 10 is standard PS L3, 11 for offset Bluetooth drivers
-                                    "dpad_up": 11,
-                                    "dpad_down": 12,
-                                }
+                                if name == "ps4 controller":
+                                    profile = {
+                                        "type": "PlayStation (Virtual)",
+                                        "l3_buttons": (7, 10, 11),
+                                        "dpad_up": 11,
+                                        "dpad_down": 12,
+                                    }
+                                else:
+                                    profile = {
+                                        "type": "PlayStation",
+                                        "l3_buttons": (10, 11),  # 10 is standard PS L3, 11 for offset Bluetooth drivers
+                                        "dpad_up": 11,
+                                        "dpad_down": 12,
+                                    }
                             elif is_switch:
                                 profile = {
                                     "type": "Nintendo Switch",
