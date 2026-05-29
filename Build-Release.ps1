@@ -7,11 +7,14 @@ $ErrorActionPreference = 'Stop'
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 Set-Location $scriptDir
 
-$appVersion = '2.3.0'
+$branch = (git rev-parse --abbrev-ref HEAD)
+$isEnglish = ($branch -like '*eng*')
+$suffix = if ($isEnglish) { '_eng' } else { '' }
+$appVersion = '2.3.1'
 $releaseRoot = Join-Path $scriptDir 'release'
-$packageDir = Join-Path $releaseRoot 'ForzaMusicOverlay-release2.3'
+$packageDir = Join-Path $releaseRoot "ForzaMusicOverlay-release$appVersion$suffix"
 $appFilesDir = Join-Path $packageDir 'AppFiles'
-$zipPath = Join-Path $releaseRoot 'ForzaMusicOverlay-release2.3.zip'
+$rarPath = Join-Path $releaseRoot "ForzaMusicOverlay-release$appVersion$suffix.rar"
 $launcherOut = Join-Path $scriptDir 'tmp\launcher\ForzaMusicOverlay.exe'
 $iconPath = Join-Path $scriptDir 'electron-app\build\logo.ico'
 
@@ -127,16 +130,22 @@ $rand = New-Object System.Random
 $rand.NextBytes($randomBytes)
 [System.IO.File]::WriteAllBytes($paddingPath, $randomBytes)
 
-if (Test-Path -LiteralPath $zipPath) {
-    Remove-Item -LiteralPath $zipPath -Force
+$rarExe = "C:\Program Files\WinRAR\Rar.exe"
+if (Test-Path -LiteralPath $rarPath) {
+    Remove-Item -LiteralPath $rarPath -Force
 }
-Compress-Archive -LiteralPath $packageDir -DestinationPath $zipPath -Force
 
-$zipItem = Get-Item -LiteralPath $zipPath
+Write-Host "Compressing release package to RAR using WinRAR..."
+& $rarExe a -r -ep1 "$rarPath" "$packageDir"
+if ($LASTEXITCODE -ne 0) {
+    throw 'WinRAR compression failed.'
+}
+
+$rarItem = Get-Item -LiteralPath $rarPath
 $packageItemCount = (Get-ChildItem -LiteralPath $packageDir -Recurse -File | Measure-Object).Count
 
 Write-Host ''
 Write-Host 'Release package created:'
-Write-Host $zipPath
-Write-Host "Size: $([Math]::Round($zipItem.Length / 1MB, 2)) MB"
+Write-Host $rarPath
+Write-Host "Size: $([Math]::Round($rarItem.Length / 1MB, 2)) MB"
 Write-Host "Files: $packageItemCount"
