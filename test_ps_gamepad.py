@@ -41,7 +41,7 @@ try:
 
         # 1. 處理普通按鍵映射
         button_mappings = {
-            'l': (vg.DS4_BUTTONS.DS4_BUTTON_THUMBL, "L3 (搖桿下壓)"),
+            'l': (vg.DS4_BUTTONS.DS4_BUTTON_THUMB_LEFT, "L3 (搖桿下壓)"),
             'j': (vg.DS4_BUTTONS.DS4_BUTTON_CROSS, "✕ (手把 A)") ,
             'k': (vg.DS4_BUTTONS.DS4_BUTTON_CIRCLE, "◯ (手把 B)"),
             'i': (vg.DS4_BUTTONS.DS4_BUTTON_SQUARE, "▢ (手把 X)"),
