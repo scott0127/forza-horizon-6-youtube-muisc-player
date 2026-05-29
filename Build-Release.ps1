@@ -35,6 +35,7 @@ if (-not $SkipBuild) {
 
     & $venvPython -m PyInstaller `
         --clean `
+        --noconfirm `
         --onedir `
         --name ForzaMusicOverlayBackend `
         --collect-submodules winsdk `
