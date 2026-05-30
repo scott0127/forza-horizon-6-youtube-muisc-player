@@ -548,21 +548,21 @@ class GamepadThread(threading.Thread):
                                 else:
                                     profile = {
                                         "type": "PlayStation",
-                                        "l3_buttons": (10, 11),  # 10 is standard PS L3, 11 for offset Bluetooth drivers
+                                        "l3_buttons": (7, 10, 11),  # 7 for SDL standard, 10/11 for raw Bluetooth
                                         "dpad_up": 11,
                                         "dpad_down": 12,
                                     }
                             elif is_switch:
                                 profile = {
                                     "type": "Nintendo Switch",
-                                    "l3_buttons": (10, 11),
+                                    "l3_buttons": (7, 10, 11),
                                     "dpad_up": 11,
                                     "dpad_down": 12,
                                 }
                             else:
                                 profile = {
                                     "type": "Xbox",
-                                    "l3_buttons": (8,),
+                                    "l3_buttons": (7, 8, 9),  # 7 for SDL standard, 8 for XInput raw, 9 for older drivers
                                     "dpad_up": 11,
                                     "dpad_down": 12,
                                 }
