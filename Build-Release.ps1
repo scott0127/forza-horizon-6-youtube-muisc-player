@@ -10,7 +10,7 @@ Set-Location $scriptDir
 $branch = (git rev-parse --abbrev-ref HEAD)
 $isEnglish = ($branch -like '*eng*')
 $suffix = if ($isEnglish) { '_eng' } else { '' }
-$appVersion = '2.3.2'
+$appVersion = '2.4.0'
 $releaseRoot = Join-Path $scriptDir 'release'
 $packageDir = Join-Path $releaseRoot "ForzaMusicOverlay-release$appVersion$suffix"
 $appFilesDir = Join-Path $packageDir 'AppFiles'

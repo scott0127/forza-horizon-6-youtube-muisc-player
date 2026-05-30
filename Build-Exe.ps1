@@ -31,6 +31,7 @@ if ($LASTEXITCODE -ne 0) {
 & $venvPython -m PyInstaller `
     --clean `
     --noconsole `
+    --noupx `
     --onefile `
     --name ForzaMusicOverlay `
     --collect-submodules winsdk `

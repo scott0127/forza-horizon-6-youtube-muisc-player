@@ -481,6 +481,17 @@ function setPositionMode(enabled: boolean): void {
   }
 }
 
+const gotTheLock = app.requestSingleInstanceLock()
+
+if (!gotTheLock) {
+  app.quit()
+  process.exit(0)
+}
+
+app.on('second-instance', () => {
+  showControlWindow()
+})
+
 app.whenReady().then(async () => {
   app.setAppUserModelId('tw.scott.forza-music-floating-player')
   await createWindows()
