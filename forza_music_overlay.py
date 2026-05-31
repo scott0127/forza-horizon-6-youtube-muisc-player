@@ -11,6 +11,8 @@ import json
 import os
 from pathlib import Path
 import queue
+import socket
+import struct
 import sys
 import threading
 import time
@@ -635,6 +637,138 @@ class HotkeyThread(threading.Thread):
             Win32.user32.UnregisterHotKey(None, hotkey_id)
 
 
+class TelemetryThread(threading.Thread):
+    def __init__(self, output: queue.Queue, stop_event: threading.Event):
+        super().__init__(daemon=True)
+        self.output = output
+        self.stop_event = stop_event
+        self.port = 5300
+        self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self.sock.settimeout(0.5)
+        try:
+            self.sock.bind(('0.0.0.0', self.port))
+            print(f"[Telemetry] Bound to UDP {self.port}", file=sys.stderr)
+        except Exception as e:
+            print(f"[Telemetry] UDP bind error: {e}", file=sys.stderr)
+            self.sock = None
+        
+        self.original_volumes = {}
+
+    def get_target_sessions(self):
+        if not AudioUtilities:
+            return []
+        # Target media browsers and apps
+        app_names = ['spotify.exe', 'chrome.exe', 'msedge.exe', 'applemusic.exe', 'brave.exe']
+        sessions = AudioUtilities.GetAllSessions()
+        targets = []
+        for session in sessions:
+            if session.Process and session.Process.name().lower() in app_names:
+                targets.append((session.Process.name().lower(), session._ctl.QueryInterface(ISimpleAudioVolume)))
+        return targets
+
+    def fade_out_and_pause(self):
+        targets = self.get_target_sessions()
+        if not targets:
+            return
+        
+        # Save original volumes
+        for name, s in targets:
+            vol = s.GetMasterVolume()
+            if vol > 0.05:
+                self.original_volumes[name] = vol
+        
+        # Fade out over 1.5s
+        for i in range(15):
+            ratio = 1.0 - ((i + 1) / 15.0)
+            for name, s in targets:
+                orig = self.original_volumes.get(name, 0.5)
+                s.SetMasterVolume(max(0.0, orig * ratio), None)
+            time.sleep(0.1)
+            
+        # Send Pause if playing
+        if GLOBAL_LATEST_TRACK and GLOBAL_LATEST_TRACK.status.upper() == "PLAYING":
+            try:
+                send_media_key(Win32.VK_MEDIA_PLAY_PAUSE)
+            except Exception:
+                pass
+        
+    def play_and_fade_in(self):
+        # Send Play if paused
+        if GLOBAL_LATEST_TRACK and GLOBAL_LATEST_TRACK.status.upper() != "PLAYING":
+            try:
+                send_media_key(Win32.VK_MEDIA_PLAY_PAUSE)
+            except Exception:
+                pass
+        
+        time.sleep(0.2) # Wait for playback to resume
+        targets = self.get_target_sessions()
+        if not targets:
+            return
+        
+        # Fade in over 1.5s
+        for i in range(15):
+            ratio = (i + 1) / 15.0
+            for name, s in targets:
+                orig = self.original_volumes.get(name, 0.5)
+                s.SetMasterVolume(min(1.0, orig * ratio), None)
+            time.sleep(0.1)
+
+    def run(self):
+        if not self.sock:
+            return
+
+        last_update_time = 0
+        last_is_race_on = None
+        race_off_time = 0
+        is_ducked = False
+        
+        while not self.stop_event.is_set():
+            try:
+                data, addr = self.sock.recvfrom(1024)
+                if len(data) >= 260:
+                    # Forza Dash V2 UDP packet
+                    is_race_on, _, engine_max_rpm, engine_idle_rpm, current_engine_rpm = struct.unpack('<iIfff', data[:20])
+                    speed_ms = struct.unpack_from('<f', data, 256)[0]
+                    speed_kph = speed_ms * 3.6
+                    
+                    # 1. State Transitions (Ducking)
+                    if is_race_on != last_is_race_on:
+                        if is_race_on == 1:
+                            race_off_time = 0
+                            if is_ducked:
+                                threading.Thread(target=self.play_and_fade_in, daemon=True).start()
+                                is_ducked = False
+                        elif is_race_on == 0:
+                            race_off_time = time.time()
+                        last_is_race_on = is_race_on
+                    
+                    # 2. Debounce trigger for fade out (Wait 0.5s)
+                    if last_is_race_on == 0 and is_race_on == 0 and race_off_time > 0:
+                        if time.time() - race_off_time >= 0.5:
+                            if not is_ducked:
+                                threading.Thread(target=self.fade_out_and_pause, daemon=True).start()
+                                is_ducked = True
+                            race_off_time = 0
+                    
+                    # 3. Downsample UI updates to 20Hz (every 50ms)
+                    now = time.time()
+                    if now - last_update_time >= 0.05:
+                        self.output.put(("telemetry_data", {
+                            "rpm": current_engine_rpm,
+                            "max_rpm": engine_max_rpm,
+                            "speed": speed_kph
+                        }))
+                        last_update_time = now
+
+            except socket.timeout:
+                pass
+            except Exception as e:
+                time.sleep(1)
+        
+        if self.sock:
+            self.sock.close()
+
+
 class GamepadThread(threading.Thread):
     # L3（左搖桿按下）作為修飾鍵，避免與 Forza 的 LB（離合器）衝突。
     # Xbox: L3 = 按鈕索引 8, PlayStation: L3 = 按鈕索引 10 或 11。
@@ -1113,6 +1247,7 @@ class OverlayUI:
         self.worker_thread: threading.Thread | None = None
         self.hotkey_thread: HotkeyThread | None = None
         self.gamepad_thread: GamepadThread | None = None
+        self.telemetry_thread: TelemetryThread | None = None
         self.setup_window: tk.Toplevel | None = None
         self.setup_status_var: tk.StringVar | None = None
         self.service_text: tk.StringVar | None = None
@@ -1580,6 +1715,9 @@ class OverlayUI:
         self.gamepad_thread = GamepadThread(self.output, self.stop_event)
         self.gamepad_thread.start()
 
+        self.telemetry_thread = TelemetryThread(self.output, self.stop_event)
+        self.telemetry_thread.start()
+
     def run_media_worker(self) -> None:
         asyncio.run(media_poll_loop(self.output, self.stop_event))
 
@@ -1806,6 +1944,11 @@ class OverlayUI:
                     self.gamepad_text.set(payload)
                 elif kind == "gamepad_inputs":
                     pass
+                elif kind == "telemetry_data":
+                    try:
+                        print(json.dumps({"type": "telemetry:update", "data": payload}), flush=True)
+                    except Exception:
+                        pass
         except queue.Empty:
             pass
 
@@ -2106,6 +2249,7 @@ def run_stdio_backend() -> int:
     )
     hotkey_thread = HotkeyThread(output, stop_event)
     gamepad_thread = GamepadThread(output, stop_event)
+    telemetry_thread = TelemetryThread(output, stop_event)
     stdin_thread = threading.Thread(
         target=read_backend_commands,
         args=(command_queue, stop_event),
@@ -2116,6 +2260,7 @@ def run_stdio_backend() -> int:
     media_thread.start()
     hotkey_thread.start()
     gamepad_thread.start()
+    telemetry_thread.start()
     stdin_thread.start()
 
     emit_backend_event(
