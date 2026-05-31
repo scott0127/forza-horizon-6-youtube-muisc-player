@@ -645,8 +645,8 @@ class GamepadThread(threading.Thread):
         ("L3 + X", L3_BUTTONS, 2, Win32.VK_MEDIA_PREV_TRACK),
     )
     HAT_COMBOS = (
-        ("L3 + 上鍵", L3_BUTTONS, (0, 1), Win32.VK_VOLUME_UP),
-        ("L3 + 下鍵", L3_BUTTONS, (0, -1), Win32.VK_VOLUME_DOWN),
+        ("L3 + 右鍵", L3_BUTTONS, (1, 0), Win32.VK_VOLUME_UP),
+        ("L3 + 左鍵", L3_BUTTONS, (-1, 0), Win32.VK_VOLUME_DOWN),
     )
     # PlayStation 手把的 D-Pad 通常映射為按鈕而非 hat，
     # 以下為常見的 DualSense / DualShock 4 D-Pad 按鈕索引。

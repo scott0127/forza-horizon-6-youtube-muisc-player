@@ -1056,9 +1056,19 @@ p {
 }
 
 .xbox-button-img.up,
-.xbox-button-img.down {
+.xbox-button-img.down,
+.xbox-button-img.left,
+.xbox-button-img.right {
   border-radius: 50%;
   overflow: hidden;
+}
+
+.xbox-button-img.left {
+  transform: rotate(-90deg);
+}
+
+.xbox-button-img.right {
+  transform: rotate(90deg);
 }
 
 
@@ -2663,6 +2673,14 @@ body,
     drop-shadow(0 0 14px var(--accent)) 
     drop-shadow(0 0 4px var(--accent))
     drop-shadow(0 3px 6px rgba(0, 0, 0, 0.55)) !important;
+}
+
+.xbox-button-img.left.active {
+  transform: rotate(-90deg) scale(0.85) translateY(1.5px) !important;
+}
+
+.xbox-button-img.right.active {
+  transform: rotate(90deg) scale(0.85) translateY(1.5px) !important;
 }
 
 

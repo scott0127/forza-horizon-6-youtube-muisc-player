@@ -41,7 +41,7 @@ const DEFAULT_PLAYER_SCALE = 0.8
 const MIN_PLAYER_SCALE = 0.6
 const MAX_PLAYER_SCALE = 1
 const PLAYER_SCALE_STEP = 0.05
-type ControllerButton = 'L3' | 'L3_ACTIVE' | 'A' | 'B' | 'X' | 'UP' | 'DOWN'
+type ControllerButton = 'L3' | 'L3_ACTIVE' | 'A' | 'B' | 'X' | 'UP' | 'DOWN' | 'LEFT' | 'RIGHT'
 const view = new URLSearchParams(window.location.search).get('view') === 'player' ? 'player' : 'control'
 const now = ref(Date.now() / 1000)
 const backendStatus = ref('後端啟動中')
@@ -195,8 +195,8 @@ const controllerShortcuts: Array<{ buttons: ControllerButton[]; action: string }
   { buttons: ['L3', 'A'], action: '播放 / 暫停' },
   { buttons: ['L3', 'B'], action: '下一首' },
   { buttons: ['L3', 'X'], action: '上一首' },
-  { buttons: ['L3', 'UP'], action: '調高音量' },
-  { buttons: ['L3', 'DOWN'], action: '調低音量' }
+  { buttons: ['L3', 'RIGHT'], action: '調高音量' },
+  { buttons: ['L3', 'LEFT'], action: '調低音量' }
 ]
 const controllerButtonAssets = computed<Record<ControllerButton, string>>(() => {
   const isPs = isPlayStation.value
@@ -207,7 +207,9 @@ const controllerButtonAssets = computed<Record<ControllerButton, string>>(() => 
     B: isPs ? psCircle : xboxB,
     X: isPs ? psSquare : xboxX,
     UP: xboxUp,
-    DOWN: xboxDown
+    DOWN: xboxDown,
+    LEFT: xboxUp, /* Rotated via CSS */
+    RIGHT: xboxUp /* Rotated via CSS */
   }
 })
 
