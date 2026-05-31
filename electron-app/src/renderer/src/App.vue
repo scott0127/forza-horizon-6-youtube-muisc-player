@@ -326,13 +326,15 @@ const activeCharIndex = computed(() => {
   return activeIdx
 })
 
-const activeCharDuration = computed(() => {
+const activeCharProgress = computed(() => {
   const data = currentLyricData.value
   const idx = activeCharIndex.value
   if (idx >= 0 && idx < data.chunks.length) {
-    return data.chunks[idx].duration
+    const chunk = data.chunks[idx]
+    const elapsed = displayPosition.value - chunk.time
+    return Math.max(0, Math.min(1, elapsed / Math.max(0.01, chunk.duration)))
   }
-  return 0.5
+  return 0
 })
 
 const currentLyric = computed(() => currentLyricData.value.text)
@@ -1030,7 +1032,7 @@ onUnmounted(() => {
               'singing': index === activeCharIndex && !currentLyricData.hasEnhancedTiming,
               'singing-enhanced': index === activeCharIndex && currentLyricData.hasEnhancedTiming
             }"
-            :style="(index === activeCharIndex && currentLyricData.hasEnhancedTiming) ? { animationDuration: `${activeCharDuration}s` } : {}"
+            :style="(index === activeCharIndex && currentLyricData.hasEnhancedTiming) ? { '--lyric-progress': `${activeCharProgress * 100}%` } : {}"
           >{{ item.char }}</span>
         </span>
       </div>

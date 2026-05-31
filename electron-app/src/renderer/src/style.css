@@ -982,6 +982,7 @@ p {
 }
 
 
+
 .player-lyrics-external .char-inner.singing {
   /* Default fallback: fixed pulse */
   color: #ffffff;
@@ -991,10 +992,8 @@ p {
 }
 
 .player-lyrics-external .char-inner.singing-enhanced {
-  /* Enhanced mode: precise background fill */
-  background: linear-gradient(to right, var(--accent) 50%, rgba(255, 255, 255, 0.45) 50%);
-  background-size: 200% 100%;
-  background-position: 100% 0;
+  /* Enhanced mode: real-time precise background fill */
+  background: linear-gradient(to right, var(--accent) var(--lyric-progress, 0%), rgba(255, 255, 255, 0.45) var(--lyric-progress, 0%));
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
@@ -1003,22 +1002,9 @@ p {
   filter: drop-shadow(0 0 16px color-mix(in srgb, var(--accent) 60%, transparent)) drop-shadow(0 2px 6px rgba(0, 0, 0, 0.8));
   z-index: 10;
   position: relative;
-  animation: lyricFill 1s linear forwards;
+  transform: translateY(-2px) scale(1.15);
 }
 
-@keyframes lyricFill {
-  0% {
-    background-position: 100% 0;
-    transform: translateY(-2px) scale(1.15);
-  }
-  20% {
-    transform: translateY(-4px) scale(1.25);
-  }
-  100% {
-    background-position: 0% 0;
-    transform: translateY(-2px) scale(1.15);
-  }
-}
 
 .control-guides {
   display: grid;
