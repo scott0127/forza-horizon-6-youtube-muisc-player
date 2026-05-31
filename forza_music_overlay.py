@@ -498,7 +498,8 @@ def fetch_lyrics_sync(title: str, artist: str) -> str:
 
 async def update_lyrics_for_track(track: TrackInfo, output: queue.Queue):
     lyrics = await asyncio.to_thread(fetch_lyrics_sync, track.title, track.artist)
-    output.put(("lyrics", lyrics))
+    if GLOBAL_LATEST_TRACK and GLOBAL_LATEST_TRACK.title == track.title:
+        output.put(("lyrics", lyrics))
 
 
 async def media_poll_loop(output: queue.Queue, stop_event: threading.Event, interval: float = 0.8) -> None:
