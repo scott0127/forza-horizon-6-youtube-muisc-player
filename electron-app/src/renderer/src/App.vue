@@ -1027,9 +1027,10 @@ onUnmounted(() => {
             class="char-inner"
             :class="{
               'sung': index < activeCharIndex,
-              'singing': index === activeCharIndex
+              'singing': index === activeCharIndex && !currentLyricData.hasEnhancedTiming,
+              'singing-enhanced': index === activeCharIndex && currentLyricData.hasEnhancedTiming
             }"
-            :style="(index === activeCharIndex && currentLyricData.hasEnhancedTiming) ? { animationDuration: `${Math.max(0.1, Math.min(activeCharDuration, 1.2))}s` } : {}"
+            :style="(index === activeCharIndex && currentLyricData.hasEnhancedTiming) ? { animationDuration: `${activeCharDuration}s` } : {}"
           >{{ item.char }}</span>
         </span>
       </div>
