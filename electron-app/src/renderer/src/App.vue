@@ -1029,7 +1029,7 @@ onUnmounted(() => {
               'sung': index < activeCharIndex,
               'singing': index === activeCharIndex
             }"
-            :style="index === activeCharIndex ? { animationDuration: `${Math.max(0.1, Math.min(activeCharDuration, 1.2))}s` } : {}"
+            :style="(index === activeCharIndex && currentLyricData.hasEnhancedTiming) ? { animationDuration: `${Math.max(0.1, Math.min(activeCharDuration, 1.2))}s` } : {}"
           >{{ item.char }}</span>
         </span>
       </div>
