@@ -94,14 +94,7 @@ const rpmRatio = computed(() => {
 const lastArtwork = ref<{ key: string; dataUrl: string } | null>(null)
 const lastPlayableTrack = ref<TrackState | null>(null)
 const lastPlayableAt = ref(0)
-const telemetryRpm = ref(0)
-const telemetryMaxRpm = ref(8000)
-const telemetrySpeed = ref(0)
 
-const rpmRatio = computed(() => {
-  if (telemetryMaxRpm.value <= 0) return 0
-  return Math.max(0, Math.min(1, telemetryRpm.value / telemetryMaxRpm.value))
-})
 const appVolume = ref<number | null>(null)
 let volumeHideTimer: number | undefined
 const volumePercent = computed(() => Math.max(0, Math.min(100, Math.round((appVolume.value ?? 0) * 100))))
