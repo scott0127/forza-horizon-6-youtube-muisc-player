@@ -585,9 +585,11 @@ onMounted(async () => {
     applyPlayerScale(playerScale.value)
   })
 
-  clock = window.setInterval(() => {
+  const tick = () => {
     now.value = Date.now() / 1000
-  }, 250)
+    clock = window.requestAnimationFrame(tick)
+  }
+  tick()
 })
 
 onUnmounted(() => {
@@ -596,7 +598,7 @@ onUnmounted(() => {
   removeThemeModeListener?.()
   removePlayerScaleListener?.()
   if (idleTimer) window.clearTimeout(idleTimer)
-  if (clock) window.clearInterval(clock)
+  if (clock) window.cancelAnimationFrame(clock)
 })
 </script>
 
