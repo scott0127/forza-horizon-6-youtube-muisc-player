@@ -274,8 +274,11 @@ const parsedLyrics = computed<LyricLine[]>(() => {
   return result
 })
 
+// 為了補償視覺與聽覺的延遲，讓歌詞稍微提前跳動 (150ms)
+const lyricPosition = computed(() => displayPosition.value + 0.15)
+
 const currentLyricData = computed(() => {
-  const currentPos = displayPosition.value
+  const currentPos = lyricPosition.value
   const lines = parsedLyrics.value
   if (!lines.length) return { text: '', id: 0, startTime: 0, duration: 1, chunks: [] as LyricChunk[], hasEnhancedTiming: false }
   
@@ -314,7 +317,7 @@ const currentLyricData = computed(() => {
 const activeCharIndex = computed(() => {
   const data = currentLyricData.value
   if (!data.chunks.length) return -1
-  const currentPos = displayPosition.value
+  const currentPos = lyricPosition.value
   let activeIdx = -1
   for (let i = 0; i < data.chunks.length; i++) {
     if (currentPos >= data.chunks[i].time) {
@@ -331,7 +334,7 @@ const activeCharProgress = computed(() => {
   const idx = activeCharIndex.value
   if (idx >= 0 && idx < data.chunks.length) {
     const chunk = data.chunks[idx]
-    const elapsed = displayPosition.value - chunk.time
+    const elapsed = lyricPosition.value - chunk.time
     return Math.max(0, Math.min(1, elapsed / Math.max(0.01, chunk.duration)))
   }
   return 0
