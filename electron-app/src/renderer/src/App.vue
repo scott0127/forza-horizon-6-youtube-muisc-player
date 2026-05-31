@@ -1040,7 +1040,7 @@ onUnmounted(() => {
               'singing': index === activeCharIndex && !currentLyricData.hasEnhancedTiming,
               'singing-enhanced': index === activeCharIndex && currentLyricData.hasEnhancedTiming
             }"
-            :style="(index === activeCharIndex && currentLyricData.hasEnhancedTiming) ? { '--lyric-progress': `${activeCharProgress * 100}%` } : {}"
+            :style="(index === activeCharIndex) ? { '--lyric-progress': `${activeCharProgress * 100}%`, '--lyric-progress-raw': activeCharProgress } : {}"
           >{{ item.char }}</span>
         </span>
       </div>
