@@ -86,6 +86,14 @@ const track = ref<TrackState>({ ...emptyTrack })
 const telemetryRpm = ref(0)
 const telemetryMaxRpm = ref(8000)
 const telemetrySpeed = ref(0)
+const telemetryGear = ref(11) // Default to Neutral (11)
+
+const gearLabel = computed(() => {
+  const g = telemetryGear.value
+  if (g === 0) return 'R'
+  if (g === 11) return 'N'
+  return String(g)
+})
 
 const rpmRatio = computed(() => {
   if (telemetryMaxRpm.value <= 0) return 0
@@ -583,10 +591,10 @@ onMounted(async () => {
     } else if (event.type === 'command' && event.command === 'toggle_position_mode') {
       lastMessage.value = positionMode.value ? '可拖曳左上角懸浮播放器調整位置' : '懸浮播放器位置已儲存'
     } else if (event.type === 'telemetry:update' && event.data) {
-      console.log("[Telemetry Frontend] Got data:", event.data)
       telemetryRpm.value = event.data.rpm
       telemetryMaxRpm.value = event.data.max_rpm
       telemetrySpeed.value = event.data.speed
+      telemetryGear.value = event.data.gear ?? 11
     } else if (event.type === 'backend:stderr' && event.message) {
       console.warn('Backend stderr:', event.message)
     } else if (event.message) {
@@ -947,7 +955,7 @@ onUnmounted(() => {
 
     <!-- RPM Debug Info -->
     <div style="position: absolute; top: 10px; right: 10px; font-size: 11px; color: white; opacity: 0.9; font-family: monospace; z-index: 999; pointer-events: none; background: rgba(0,0,0,0.6); padding: 2px 8px; border-radius: 4px; box-shadow: 0 0 4px rgba(0,0,0,0.5);">
-      RPM: {{ Math.round(telemetryRpm) }} / {{ Math.round(telemetryMaxRpm) }} | SPD: {{ Math.round(telemetrySpeed) }} | Tier: {{ rpmStage }}
+      RPM: {{ Math.round(telemetryRpm) }} / {{ Math.round(telemetryMaxRpm) }} | GEAR: {{ gearLabel }} | SPD: {{ Math.round(telemetrySpeed) }} | Tier: {{ rpmStage }}
     </div>
 
     <!-- Radio (borderless) player -->

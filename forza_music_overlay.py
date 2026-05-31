@@ -655,83 +655,16 @@ class TelemetryThread(threading.Thread):
         except Exception as e:
             print(f"[Telemetry] UDP bind error: {e}", file=sys.stderr)
             self.sock = None
-        
-        self.original_volumes = {}
-
-    def get_target_sessions(self):
-        if not AudioUtilities:
-            return []
-        # Target media browsers and apps
-        app_names = ['spotify.exe', 'chrome.exe', 'msedge.exe', 'applemusic.exe', 'brave.exe']
-        sessions = AudioUtilities.GetAllSessions()
-        targets = []
-        for session in sessions:
-            if session.Process and session.Process.name().lower() in app_names:
-                targets.append((session.Process.name().lower(), session._ctl.QueryInterface(ISimpleAudioVolume)))
-        return targets
-
-    def fade_out_and_pause(self):
-        targets = self.get_target_sessions()
-        if not targets:
-            return
-        
-        # Save original volumes
-        for name, s in targets:
-            vol = s.GetMasterVolume()
-            if vol > 0.05:
-                self.original_volumes[name] = vol
-        
-        # Fade out over 1.5s
-        for i in range(15):
-            ratio = 1.0 - ((i + 1) / 15.0)
-            for name, s in targets:
-                orig = self.original_volumes.get(name, 0.5)
-                s.SetMasterVolume(max(0.0, orig * ratio), None)
-            time.sleep(0.1)
-            
-        # Send Pause if playing
-        if GLOBAL_LATEST_TRACK and GLOBAL_LATEST_TRACK.status.upper() == "PLAYING":
-            try:
-                send_media_key(Win32.VK_MEDIA_PLAY_PAUSE)
-            except Exception:
-                pass
-        
-    def play_and_fade_in(self):
-        # Send Play if paused
-        if GLOBAL_LATEST_TRACK and GLOBAL_LATEST_TRACK.status.upper() != "PLAYING":
-            try:
-                send_media_key(Win32.VK_MEDIA_PLAY_PAUSE)
-            except Exception:
-                pass
-        
-        time.sleep(0.2) # Wait for playback to resume
-        targets = self.get_target_sessions()
-        if not targets:
-            return
-        
-        # Fade in over 1.5s
-        for i in range(15):
-            ratio = (i + 1) / 15.0
-            for name, s in targets:
-                orig = self.original_volumes.get(name, 0.5)
-                s.SetMasterVolume(min(1.0, orig * ratio), None)
-            time.sleep(0.1)
 
     def run(self):
         if not self.sock:
             return
 
         last_update_time = 0
-        last_is_race_on = None
-        race_off_time = 0
-        is_ducked = False
-        last_packet_time = time.time()
         
         while not self.stop_event.is_set():
             try:
                 data, addr = self.sock.recvfrom(1024)
-                last_packet_time = time.time()
-                print(f"[Telemetry Thread] Received UDP packet of size {len(data)} bytes", file=sys.stderr)
                 if len(data) >= 44:
                     # Forza UDP packet (works for 232, 311, or 324 bytes)
                     is_race_on = struct.unpack_from('<i', data, 0)[0]
@@ -745,42 +678,27 @@ class TelemetryThread(threading.Thread):
                     import math
                     speed_kph = math.sqrt(vx**2 + vy**2 + vz**2) * 3.6
                     
-                    # 1. State Transitions (Ducking)
-                    if is_race_on != last_is_race_on:
-                        if is_race_on == 1:
-                            race_off_time = 0
-                            if is_ducked:
-                                threading.Thread(target=self.play_and_fade_in, daemon=True).start()
-                                is_ducked = False
-                        elif is_race_on == 0:
-                            race_off_time = time.time()
-                        last_is_race_on = is_race_on
+                    # Extract Gear if Dash packet is sent (length >= 307 bytes)
+                    gear = 11  # Default to Neutral
+                    if len(data) >= 307:
+                        try:
+                            gear = struct.unpack_from('<B', data, 306)[0]
+                        except Exception:
+                            pass
                     
-                    # 2. Debounce trigger for fade out (Wait 0.5s)
-                    if last_is_race_on == 0 and is_race_on == 0 and race_off_time > 0:
-                        if time.time() - race_off_time >= 0.5:
-                            if not is_ducked:
-                                threading.Thread(target=self.fade_out_and_pause, daemon=True).start()
-                                is_ducked = True
-                            race_off_time = 0
-                    
-                    # 3. Downsample UI updates to 20Hz (every 50ms)
+                    # Downsample UI updates to 20Hz (every 50ms)
                     now = time.time()
                     if now - last_update_time >= 0.05:
                         self.output.put(("telemetry_data", {
                             "rpm": current_engine_rpm,
                             "max_rpm": engine_max_rpm,
-                            "speed": speed_kph
+                            "speed": speed_kph,
+                            "gear": gear
                         }))
                         last_update_time = now
 
             except socket.timeout:
-                # If game closed / stopped sending for 2 seconds, auto-restore volume
-                if is_ducked and (time.time() - last_packet_time >= 2.0):
-                    print("[Telemetry Thread] No packets for 2s, auto-restoring volume", file=sys.stderr)
-                    threading.Thread(target=self.play_and_fade_in, daemon=True).start()
-                    is_ducked = False
-                    last_is_race_on = None
+                pass
             except Exception as e:
                 print(f"[Telemetry Error] {e}", file=sys.stderr)
                 time.sleep(1)
@@ -2330,7 +2248,6 @@ def run_stdio_backend() -> int:
             elif kind == "gamepad_inputs":
                 emit_backend_event({"type": "gamepad:inputs", "pressed": payload})
             elif kind == "telemetry_data":
-                print(f"[Stdio Backend] Forwarding telemetry data for RPM: {payload.get('rpm')}", file=sys.stderr)
                 emit_backend_event({"type": "telemetry:update", "data": payload})
     finally:
         stop_event.set()

@@ -435,8 +435,7 @@ async function createWindows(): Promise<void> {
   await Promise.all([controlWindow.loadURL(rendererUrl('control')), playerWindow.loadURL(rendererUrl('player'))])
   
   if (isDev) {
-    controlWindow.webContents.openDevTools()
-    playerWindow.webContents.openDevTools({ mode: 'detach' })
+    // DevTools removed to avoid popping up automatically.
   }
 
   if (startOverlayOnly) {
