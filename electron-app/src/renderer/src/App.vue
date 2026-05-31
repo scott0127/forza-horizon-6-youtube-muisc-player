@@ -940,7 +940,7 @@ onUnmounted(() => {
     :style="{ '--rpm-ratio': rpmRatio }"
   >
     <!-- RPM Debug Info -->
-    <div style="position: absolute; top: -25px; right: 0; font-size: 11px; color: white; opacity: 0.9; font-family: monospace; z-index: 999; pointer-events: none; background: rgba(0,0,0,0.6); padding: 2px 8px; border-radius: 4px; box-shadow: 0 0 4px rgba(0,0,0,0.5);">
+    <div style="position: absolute; top: 10px; right: 10px; font-size: 11px; color: white; opacity: 0.9; font-family: monospace; z-index: 999; pointer-events: none; background: rgba(0,0,0,0.6); padding: 2px 8px; border-radius: 4px; box-shadow: 0 0 4px rgba(0,0,0,0.5);">
       RPM: {{ Math.round(telemetryRpm) }} / {{ Math.round(telemetryMaxRpm) }} | SPD: {{ Math.round(telemetrySpeed) }} | Tier: {{ rpmStage }}
     </div>
 

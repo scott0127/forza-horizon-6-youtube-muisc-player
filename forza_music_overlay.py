@@ -642,11 +642,11 @@ class TelemetryThread(threading.Thread):
         super().__init__(daemon=True)
         self.output = output
         self.stop_event = stop_event
-        self.port = 5300
+        self.port = 501
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.sock.settimeout(0.5)
         try:
-            self.sock.bind(('0.0.0.0', self.port))
+            self.sock.bind(('127.0.0.1', self.port))
             print(f"[Telemetry] Bound to UDP {self.port}", file=sys.stderr)
         except Exception as e:
             print(f"[Telemetry] UDP bind error: {e}", file=sys.stderr)
@@ -725,11 +725,18 @@ class TelemetryThread(threading.Thread):
         while not self.stop_event.is_set():
             try:
                 data, addr = self.sock.recvfrom(1024)
-                if len(data) >= 260:
-                    # Forza Dash V2 UDP packet
-                    is_race_on, _, engine_max_rpm, engine_idle_rpm, current_engine_rpm = struct.unpack('<iIfff', data[:20])
-                    speed_ms = struct.unpack_from('<f', data, 256)[0]
-                    speed_kph = speed_ms * 3.6
+                if len(data) >= 44:
+                    # Forza UDP packet (works for 232, 311, or 324 bytes)
+                    is_race_on = struct.unpack_from('<i', data, 0)[0]
+                    engine_max_rpm = struct.unpack_from('<f', data, 8)[0]
+                    current_engine_rpm = struct.unpack_from('<f', data, 16)[0]
+                    
+                    vx = struct.unpack_from('<f', data, 32)[0]
+                    vy = struct.unpack_from('<f', data, 36)[0]
+                    vz = struct.unpack_from('<f', data, 40)[0]
+                    
+                    import math
+                    speed_kph = math.sqrt(vx**2 + vy**2 + vz**2) * 3.6
                     
                     # 1. State Transitions (Ducking)
                     if is_race_on != last_is_race_on:
@@ -763,6 +770,7 @@ class TelemetryThread(threading.Thread):
             except socket.timeout:
                 pass
             except Exception as e:
+                print(f"[Telemetry Error] {e}", file=sys.stderr)
                 time.sleep(1)
         
         if self.sock:
