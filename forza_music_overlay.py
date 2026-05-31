@@ -678,11 +678,11 @@ class TelemetryThread(threading.Thread):
                     import math
                     speed_kph = math.sqrt(vx**2 + vy**2 + vz**2) * 3.6
                     
-                    # Extract Gear if Dash packet is sent (length >= 307 bytes)
+                    # Extract Gear if Dash packet is sent (length >= 308 bytes)
                     gear = 11  # Default to Neutral
-                    if len(data) >= 307:
+                    if len(data) >= 308:
                         try:
-                            gear = struct.unpack_from('<B', data, 306)[0]
+                            gear = struct.unpack_from('<B', data, 307)[0]
                         except Exception:
                             pass
                     
