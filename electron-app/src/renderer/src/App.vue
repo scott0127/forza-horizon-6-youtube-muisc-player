@@ -295,7 +295,7 @@ const currentLyricData = computed(() => {
     }
   }
   
-  const maxDuration = 4.0
+  const maxDuration = 15.0
   const duration = Math.min(endTime - startTime, maxDuration) || 1
   let finalChunks = currentLine.chunks
   
@@ -306,6 +306,9 @@ const currentLyricData = computed(() => {
        time: startTime + (idx / rawChunks.length) * duration,
        duration: duration / rawChunks.length
     }))
+  } else if (finalChunks.length > 0) {
+    const lastChunk = finalChunks[finalChunks.length - 1]
+    lastChunk.duration = Math.min(Math.max(0.5, endTime - lastChunk.time), maxDuration)
   }
   
   return { text: currentLine.text, id: currentId, startTime, duration, chunks: finalChunks, hasEnhancedTiming: currentLine.hasEnhancedTiming }
