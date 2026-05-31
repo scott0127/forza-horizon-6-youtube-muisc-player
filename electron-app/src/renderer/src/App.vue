@@ -1036,9 +1036,9 @@ onUnmounted(() => {
           <span 
             class="char-inner"
             :class="{
-              'sung': index < activeCharIndex,
-              'singing': index === activeCharIndex && !currentLyricData.hasEnhancedTiming,
-              'singing-enhanced': index === activeCharIndex && currentLyricData.hasEnhancedTiming
+              'sung': index < activeCharIndex || (index === activeCharIndex && activeCharProgress >= 1),
+              'singing': index === activeCharIndex && activeCharProgress < 1 && !currentLyricData.hasEnhancedTiming,
+              'singing-enhanced': index === activeCharIndex && activeCharProgress < 1 && currentLyricData.hasEnhancedTiming
             }"
             :style="(index === activeCharIndex) ? { '--lyric-progress': `${activeCharProgress * 100}%`, '--lyric-progress-raw': activeCharProgress } : {}"
           >{{ item.char }}</span>

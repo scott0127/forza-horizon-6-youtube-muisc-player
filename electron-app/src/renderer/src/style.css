@@ -998,6 +998,24 @@ p {
   text-shadow: 0 0 calc(16px + (var(--lyric-progress-raw, 0) * 12px)) color-mix(in srgb, var(--accent) calc(var(--lyric-progress-raw, 0) * 100%), #ffffff), 0 2px 6px rgba(0, 0, 0, 0.8);
 }
 
+.player-lyrics-external .char-inner.singing-enhanced {
+  /* Enhanced mode: real-time precise background fill, NO BOUNCING */
+  background: linear-gradient(
+    to right, 
+    var(--accent) calc(var(--lyric-progress, 0%) - 15%), 
+    color-mix(in srgb, var(--accent) 50%, #ffffff) var(--lyric-progress, 0%), 
+    rgba(255, 255, 255, 0.45) calc(var(--lyric-progress, 0%) + 15%)
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+  text-shadow: none;
+  filter: drop-shadow(0 0 16px color-mix(in srgb, var(--accent) 60%, transparent)) drop-shadow(0 2px 6px rgba(0, 0, 0, 0.8));
+  z-index: 10;
+  position: relative;
+}
+
 
 
 .control-guides {
