@@ -28,8 +28,8 @@ interface AppSettings {
 }
 
 const PLAYER_SIZE = {
-  width: 640,
-  height: 280
+  width: 700,
+  height: 320
 }
 
 const PLAYER_SCALE = {
