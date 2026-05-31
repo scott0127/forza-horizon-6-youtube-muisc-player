@@ -1001,7 +1001,7 @@ p {
 
 .player-lyrics-external .char-inner.singing-enhanced {
   /* Enhanced mode: real-time precise background fill, NO BOUNCING */
-  background: linear-gradient(to right, var(--accent) var(--lyric-progress, 0%), rgba(255, 255, 255, 0.45) var(--lyric-progress, 0%));
+  background: linear-gradient(to right, var(--accent) calc(var(--lyric-progress, 0%) - 15%), color-mix(in srgb, var(--accent) 50%, #ffffff) var(--lyric-progress, 0%), rgba(255, 255, 255, 0.45) calc(var(--lyric-progress, 0%) + 15%));
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
