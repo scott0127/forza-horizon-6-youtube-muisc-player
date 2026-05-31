@@ -991,7 +991,7 @@ p {
   color: color-mix(in srgb, var(--accent) calc(var(--lyric-progress-raw, 0) * 100%), #ffffff);
   z-index: 10;
   position: relative;
-  transition: color 100ms ease, text-shadow 100ms ease;
+  transition: none;
   display: inline-block;
   transform-origin: left center;
   transform: scale(calc(1 + (var(--lyric-progress-raw, 0) * 0.12)));
@@ -1003,7 +1003,7 @@ p {
   background: linear-gradient(
     to right, 
     var(--accent) calc(var(--lyric-progress, 0%) - 15%), 
-    color-mix(in srgb, var(--accent) 50%, #ffffff) var(--lyric-progress, 0%), 
+    #ffffff var(--lyric-progress, 0%), 
     rgba(255, 255, 255, 0.45) calc(var(--lyric-progress, 0%) + 15%)
   );
   -webkit-background-clip: text;
