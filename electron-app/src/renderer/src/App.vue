@@ -91,6 +91,13 @@ const rpmRatio = computed(() => {
   if (telemetryMaxRpm.value <= 0) return 0
   return Math.max(0, Math.min(1, telemetryRpm.value / telemetryMaxRpm.value))
 })
+const rpmStage = computed(() => {
+  const r = rpmRatio.value
+  if (r >= 0.95) return 3
+  if (r >= 0.8) return 2
+  if (r >= 0.6) return 1
+  return 0
+})
 const lastArtwork = ref<{ key: string; dataUrl: string } | null>(null)
 const lastPlayableTrack = ref<TrackState | null>(null)
 const lastPlayableAt = ref(0)
@@ -929,9 +936,14 @@ onUnmounted(() => {
   <main 
     v-else 
     class="player-shell" 
-    :class="[themeClass, { 'rpm-high': rpmRatio > 0.8, 'rpm-redline': rpmRatio > 0.95 }]"
+    :class="[themeClass, `rpm-tier-${rpmStage}`]"
     :style="{ '--rpm-ratio': rpmRatio }"
   >
+    <!-- RPM Debug Info -->
+    <div style="position: absolute; top: -25px; right: 0; font-size: 11px; color: white; opacity: 0.9; font-family: monospace; z-index: 999; pointer-events: none; background: rgba(0,0,0,0.6); padding: 2px 8px; border-radius: 4px; box-shadow: 0 0 4px rgba(0,0,0,0.5);">
+      RPM: {{ Math.round(telemetryRpm) }} / {{ Math.round(telemetryMaxRpm) }} | SPD: {{ Math.round(telemetrySpeed) }} | Tier: {{ rpmStage }}
+    </div>
+
     <!-- Radio (borderless) player -->
     <section v-if="themeMode === 'radio'" :class="['radio-player', { 'position-mode': positionMode, idle: isIdle }]">
       <div class="radio-pulse" :class="{ playing: !isIdle && track.status.toUpperCase() === 'PLAYING' }"></div>
