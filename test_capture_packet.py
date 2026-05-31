@@ -32,24 +32,65 @@ def main():
             data, addr = sock.recvfrom(1024)
             packet_count += 1
             
-            # Limit console printing to 10Hz (every 0.1s) to be readable but responsive
+            # Limit console printing to 10Hz (every 0.1s)
             current_time = time.time()
             if current_time - last_print_time >= 0.1:
-                if len(data) >= 308:
+                if len(data) >= 232: # Sled V1 is at least 232 bytes
                     is_race_on = struct.unpack_from('<i', data, 0)[0]
                     max_rpm = struct.unpack_from('<f', data, 8)[0]
                     rpm = struct.unpack_from('<f', data, 16)[0]
-                    speed = struct.unpack_from('<f', data, 244)[0] * 3.6 # m/s to km/h
                     
-                    lap = struct.unpack_from('<H', data, 300)[0]
-                    pos = struct.unpack_from('<B', data, 302)[0]
-                    accel = struct.unpack_from('<B', data, 303)[0]
-                    brake = struct.unpack_from('<B', data, 304)[0]
-                    clutch = struct.unpack_from('<B', data, 305)[0]
-                    handbrake = struct.unpack_from('<B', data, 306)[0]
-                    gear = struct.unpack_from('<B', data, 307)[0]
-                    steer = struct.unpack_from('<b', data, 308)[0]
+                    # Local Velocities (in car's local frame)
+                    vx = struct.unpack_from('<f', data, 32)[0]
+                    vy = struct.unpack_from('<f', data, 36)[0]
+                    vz = struct.unpack_from('<f', data, 40)[0]
                     
+                    # Speed (mps) from velocity vector
+                    speed_mps = math.sqrt(vx**2 + vy**2 + vz**2)
+                    speed_kph = speed_mps * 3.6
+                    
+                    # Detect if game sends Dash V2 data (offsets after 232 are not all 0)
+                    has_dash_v2 = False
+                    if len(data) >= 308:
+                        # Check some Dash V2 fields like LapNumber (300) or Gear (307)
+                        # or check if the slice data[232:308] has any non-zero bytes
+                        if any(b != 0 for b in data[232:308]):
+                            has_dash_v2 = True
+                            
+                    gear = 11  # Default to Neutral
+                    gear_source = "Parsed"
+                    
+                    if has_dash_v2:
+                        try:
+                            gear = struct.unpack_from('<B', data, 307)[0]
+                        except Exception:
+                            pass
+                    else:
+                        # Forza 6 Sled Dynamic Gear Estimator
+                        gear_source = "Estimated"
+                        if vz < -0.5: # Moving backward
+                            gear = 0  # Reverse
+                        elif speed_kph < 3.0:
+                            gear = 11 # Neutral
+                        else:
+                            ratio = rpm / speed_kph
+                            if ratio >= 135.0:
+                                gear = 1
+                            elif ratio >= 88.0:
+                                gear = 2
+                            elif ratio >= 60.0:
+                                gear = 3
+                            elif ratio >= 43.0:
+                                gear = 4
+                            elif ratio >= 31.0:
+                                gear = 5
+                            elif ratio >= 23.0:
+                                gear = 6
+                            elif ratio >= 16.0:
+                                gear = 7
+                            else:
+                                gear = 8
+                                
                     status = "RACING" if is_race_on == 1 else "PAUSED"
                     gear_str = 'R' if gear == 0 else ('N' if gear == 11 else str(gear))
                     
@@ -57,14 +98,13 @@ def main():
                         f"[{packet_count:5d} Pkts] "
                         f"State: {status:6s} | "
                         f"RPM: {rpm:5.0f}/{max_rpm:5.0f} | "
-                        f"Speed: {speed:5.1f} km/h | "
-                        f"Gear: {gear_str} (Raw: {gear:2d}) | "
-                        f"Inputs: Acc:{accel:3d} Brk:{brake:3d} Hbrk:{handbrake:3d} | "
-                        f"Steer: {steer:4d}",
+                        f"Speed: {speed_kph:5.1f} km/h | "
+                        f"Gear ({gear_source}): {gear_str} | "
+                        f"Vz (Local Fwd): {vz:6.2f} m/s",
                         flush=True
                     )
                 else:
-                    print(f"[{packet_count:5d} Pkts] Received V1 Sled packet ({len(data)} bytes) - No Gear data available.", flush=True)
+                    print(f"[{packet_count:5d} Pkts] Received unknown short packet ({len(data)} bytes).", flush=True)
                 
                 last_print_time = current_time
                 

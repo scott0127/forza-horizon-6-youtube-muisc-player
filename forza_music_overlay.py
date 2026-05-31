@@ -678,13 +678,42 @@ class TelemetryThread(threading.Thread):
                     import math
                     speed_kph = math.sqrt(vx**2 + vy**2 + vz**2) * 3.6
                     
-                    # Extract Gear if Dash packet is sent (length >= 308 bytes)
+                    # Extract Gear if Dash V2 is used, otherwise estimate it for Forza 6 Sled V1
                     gear = 11  # Default to Neutral
+                    has_dash_v2 = False
                     if len(data) >= 308:
+                        if any(b != 0 for b in data[232:308]):
+                            has_dash_v2 = True
+                            
+                    if has_dash_v2:
                         try:
                             gear = struct.unpack_from('<B', data, 307)[0]
                         except Exception:
                             pass
+                    else:
+                        # Forza 6 Sled Fallback: Calculate gear from RPM / Speed ratio!
+                        if vz < -0.5:  # Moving backward
+                            gear = 0   # Reverse
+                        elif speed_kph < 3.0:
+                            gear = 11  # Neutral
+                        else:
+                            ratio = current_engine_rpm / speed_kph
+                            if ratio >= 135.0:
+                                gear = 1
+                            elif ratio >= 88.0:
+                                gear = 2
+                            elif ratio >= 60.0:
+                                gear = 3
+                            elif ratio >= 43.0:
+                                gear = 4
+                            elif ratio >= 31.0:
+                                gear = 5
+                            elif ratio >= 23.0:
+                                gear = 6
+                            elif ratio >= 16.0:
+                                gear = 7
+                            else:
+                                gear = 8
                     
                     # Downsample UI updates to 20Hz (every 50ms)
                     now = time.time()
