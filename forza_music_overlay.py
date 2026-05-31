@@ -678,16 +678,23 @@ class TelemetryThread(threading.Thread):
                     import math
                     speed_kph = math.sqrt(vx**2 + vy**2 + vz**2) * 3.6
                     
-                    # Extract Gear if Dash V2 is used, otherwise estimate it for Forza 6 Sled V1
+                    # Extract Gear depending on Forza version packet format
                     gear = 11  # Default to Neutral
-                    has_dash_v2 = False
-                    if len(data) >= 308:
-                        if any(b != 0 for b in data[232:308]):
-                            has_dash_v2 = True
-                            
-                    if has_dash_v2:
+                    has_dash = False
+                    gear_offset = 319  # Default to Horizon (FH4/FH5/FH6)
+                    
+                    if len(data) >= 324:
+                        # Forza Horizon 4/5/6 and FM8 use 324+ bytes, Gear is at 319
+                        has_dash = True
+                        gear_offset = 319
+                    elif len(data) >= 311:
+                        # Forza Motorsport 7 uses 311 bytes, Gear is at 307
+                        has_dash = True
+                        gear_offset = 307
+                        
+                    if has_dash and any(b != 0 for b in data[232:250]):
                         try:
-                            gear = struct.unpack_from('<B', data, 307)[0]
+                            gear = struct.unpack_from('<B', data, gear_offset)[0]
                         except Exception:
                             pass
                     else:

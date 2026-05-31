@@ -49,20 +49,26 @@ def main():
                     speed_mps = math.sqrt(vx**2 + vy**2 + vz**2)
                     speed_kph = speed_mps * 3.6
                     
-                    # Detect if game sends Dash V2 data (offsets after 232 are not all 0)
-                    has_dash_v2 = False
-                    if len(data) >= 308:
-                        # Check some Dash V2 fields like LapNumber (300) or Gear (307)
-                        # or check if the slice data[232:308] has any non-zero bytes
-                        if any(b != 0 for b in data[232:308]):
-                            has_dash_v2 = True
+                    # Detect Dash format version
+                    has_dash = False
+                    gear_offset = 319
+                    if len(data) >= 324:
+                        has_dash = True
+                        gear_offset = 319 # Forza Horizon 4/5/6 format
+                    elif len(data) >= 311:
+                        has_dash = True
+                        gear_offset = 307 # Forza Motorsport 7 format
+                        
+                    # Check if Dash fields are actually populated (not all zeros)
+                    if has_dash and not any(b != 0 for b in data[232:250]):
+                        has_dash = False
                             
                     gear = 11  # Default to Neutral
                     gear_source = "Parsed"
                     
-                    if has_dash_v2:
+                    if has_dash:
                         try:
-                            gear = struct.unpack_from('<B', data, 307)[0]
+                            gear = struct.unpack_from('<B', data, gear_offset)[0]
                         except Exception:
                             pass
                     else:
