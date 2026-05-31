@@ -772,45 +772,88 @@ p {
 }
 
 /* RPM Telemetry Visuals - 4 Stages */
-/* Stage 0 (0-60%): Default breathing smoke, no extra lightning glow */
-/* Stage 1 (60-80%): First tier glow (mild) */
-.rpm-tier-1 .smoke-border rect {
+.telemetry-glow-border {
+  position: absolute;
+  inset: -2px;
+  width: calc(100% + 4px);
+  height: calc(100% + 4px);
+  overflow: visible;
+  pointer-events: none;
+  z-index: 999;
+}
+
+.telemetry-glow-rect {
+  fill: none;
+  stroke: transparent;
+  stroke-width: 3px;
+  stroke-linecap: round;
+  transition: stroke 300ms ease, filter 300ms ease;
+  will-change: stroke, filter;
+}
+
+/* Stage 0 (0-60%): Faint breathing glow of the platform color */
+.rpm-tier-0 .telemetry-glow-rect {
+  stroke: color-mix(in srgb, var(--accent) 30%, transparent);
+  filter: drop-shadow(0 0 6px color-mix(in srgb, var(--accent) 50%, transparent));
+  animation: telemetry-smoke-breath 3s ease-in-out infinite;
+}
+
+@keyframes telemetry-smoke-breath {
+  0%, 100% { opacity: 0.3; }
+  50% { opacity: 0.8; }
+}
+
+/* Stage 1 (60-80%): First tier glow (mild smoke glow of platform color) */
+.rpm-tier-1 .telemetry-glow-rect {
+  stroke: var(--accent);
   filter: 
     url(#lightning-distortion)
     drop-shadow(0 0 16px var(--accent))
     drop-shadow(0 0 40px var(--accent));
+  animation: telemetry-smoke-lightning 1.5s linear infinite;
 }
 
-/* Stage 2 (80-95%): Second tier glow (intense warning red mix) */
-.rpm-tier-2 .smoke-border rect {
+@keyframes telemetry-smoke-lightning {
+  0% { stroke-dashoffset: 1000; }
+  100% { stroke-dashoffset: 0; }
+}
+
+/* Stage 2 (80-95%): Second tier glow (active writhing warning color mix) */
+.rpm-tier-2 .telemetry-glow-rect {
+  stroke: color-mix(in srgb, #ff2a00 calc((var(--rpm-ratio) - 0.8) * 600%), var(--accent));
   filter: 
     url(#lightning-distortion)
     drop-shadow(0 0 calc(16px + 20px * (var(--rpm-ratio) - 0.8) * 6) color-mix(in srgb, #ff2a00 calc((var(--rpm-ratio) - 0.8) * 600%), var(--accent)))
     drop-shadow(0 0 calc(40px + 40px * (var(--rpm-ratio) - 0.8) * 6) color-mix(in srgb, #ff2a00 calc((var(--rpm-ratio) - 0.8) * 600%), var(--accent)));
+  animation: telemetry-smoke-lightning 0.8s linear infinite;
 }
 
-/* Stage 3 (95-100%): Third tier glow (redline strobe flash) */
-.rpm-tier-3 .smoke-border rect {
+/* Stage 3 (95-100%): Third tier glow (redline extreme strobe limit flash!) */
+.rpm-tier-3 .telemetry-glow-rect {
+  stroke: #ffffff;
   animation: 
-    border-flow-in 600ms cubic-bezier(0.16, 1, 0.3, 1) forwards,
-    rpmRevLimiter 0.07s infinite alternate;
+    telemetryStrobeLimit 0.06s infinite alternate,
+    telemetry-shake 0.05s infinite alternate;
 }
 
-@keyframes rpmRevLimiter {
+@keyframes telemetryStrobeLimit {
   0% {
     filter: 
       url(#lightning-distortion)
       drop-shadow(0 0 20px #ff2a00)
-      drop-shadow(0 0 60px #ff0000);
-    transform: translateZ(0) scale(1.0);
+      drop-shadow(0 0 50px #ff0000);
   }
   100% {
     filter: 
       url(#lightning-distortion)
-      drop-shadow(0 0 60px #ffffff)
-      drop-shadow(0 0 100px #ff2a00);
-    transform: translateZ(0) scale(1.01) translateY(-1px);
+      drop-shadow(0 0 50px #ffffff)
+      drop-shadow(0 0 90px #ff2a00);
   }
+}
+
+@keyframes telemetry-shake {
+  0% { transform: translate(1px, 1px) rotate(0.1deg); }
+  100% { transform: translate(-1px, -1px) rotate(-0.1deg); }
 }
 
 @keyframes border-flow-in {

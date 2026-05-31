@@ -646,6 +646,10 @@ class TelemetryThread(threading.Thread):
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.sock.settimeout(0.5)
         try:
+            self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        except Exception:
+            pass
+        try:
             self.sock.bind(('127.0.0.1', self.port))
             print(f"[Telemetry] Bound to UDP {self.port}", file=sys.stderr)
         except Exception as e:
@@ -721,10 +725,13 @@ class TelemetryThread(threading.Thread):
         last_is_race_on = None
         race_off_time = 0
         is_ducked = False
+        last_packet_time = time.time()
         
         while not self.stop_event.is_set():
             try:
                 data, addr = self.sock.recvfrom(1024)
+                last_packet_time = time.time()
+                print(f"[Telemetry Thread] Received UDP packet of size {len(data)} bytes", file=sys.stderr)
                 if len(data) >= 44:
                     # Forza UDP packet (works for 232, 311, or 324 bytes)
                     is_race_on = struct.unpack_from('<i', data, 0)[0]
@@ -768,7 +775,12 @@ class TelemetryThread(threading.Thread):
                         last_update_time = now
 
             except socket.timeout:
-                pass
+                # If game closed / stopped sending for 2 seconds, auto-restore volume
+                if is_ducked and (time.time() - last_packet_time >= 2.0):
+                    print("[Telemetry Thread] No packets for 2s, auto-restoring volume", file=sys.stderr)
+                    threading.Thread(target=self.play_and_fade_in, daemon=True).start()
+                    is_ducked = False
+                    last_is_race_on = None
             except Exception as e:
                 print(f"[Telemetry Error] {e}", file=sys.stderr)
                 time.sleep(1)
@@ -2318,6 +2330,7 @@ def run_stdio_backend() -> int:
             elif kind == "gamepad_inputs":
                 emit_backend_event({"type": "gamepad:inputs", "pressed": payload})
             elif kind == "telemetry_data":
+                print(f"[Stdio Backend] Forwarding telemetry data for RPM: {payload.get('rpm')}", file=sys.stderr)
                 emit_backend_event({"type": "telemetry:update", "data": payload})
     finally:
         stop_event.set()

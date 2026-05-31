@@ -583,6 +583,7 @@ onMounted(async () => {
     } else if (event.type === 'command' && event.command === 'toggle_position_mode') {
       lastMessage.value = positionMode.value ? '可拖曳左上角懸浮播放器調整位置' : '懸浮播放器位置已儲存'
     } else if (event.type === 'telemetry:update' && event.data) {
+      console.log("[Telemetry Frontend] Got data:", event.data)
       telemetryRpm.value = event.data.rpm
       telemetryMaxRpm.value = event.data.max_rpm
       telemetrySpeed.value = event.data.speed
@@ -939,6 +940,11 @@ onUnmounted(() => {
     :class="[themeClass, `rpm-tier-${rpmStage}`]"
     :style="{ '--rpm-ratio': rpmRatio }"
   >
+    <!-- Telemetry RPM Glowing Border Overlay -->
+    <svg class="telemetry-glow-border" viewBox="0 0 700 320" preserveAspectRatio="none">
+      <rect class="telemetry-glow-rect" x="2" y="2" width="696" height="316" rx="16" ry="16" />
+    </svg>
+
     <!-- RPM Debug Info -->
     <div style="position: absolute; top: 10px; right: 10px; font-size: 11px; color: white; opacity: 0.9; font-family: monospace; z-index: 999; pointer-events: none; background: rgba(0,0,0,0.6); padding: 2px 8px; border-radius: 4px; box-shadow: 0 0 4px rgba(0,0,0,0.5);">
       RPM: {{ Math.round(telemetryRpm) }} / {{ Math.round(telemetryMaxRpm) }} | SPD: {{ Math.round(telemetrySpeed) }} | Tier: {{ rpmStage }}
