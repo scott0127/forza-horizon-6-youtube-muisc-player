@@ -97,7 +97,7 @@ else:
 
 
 APP_TITLE = "Forza 音樂懸浮播放器"
-APP_VERSION = "3.0.0"
+APP_VERSION = "3.5.0"
 YOUTUBE_MUSIC_URL = "https://music.youtube.com"
 SPOTIFY_URL = "https://open.spotify.com"
 APPLE_MUSIC_URL = "https://music.apple.com"

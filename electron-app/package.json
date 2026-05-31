@@ -1,6 +1,6 @@
 {
   "name": "forza-music-floating-player",
-  "version": "3.0.0",
+  "version": "3.5.0",
   "private": true,
   "description": "Electron shell for Forza 音樂懸浮播放器",
   "main": "out/main/index.js",
