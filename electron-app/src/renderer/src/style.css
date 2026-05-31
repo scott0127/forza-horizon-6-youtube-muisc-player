@@ -987,19 +987,17 @@ p {
 
 
 .player-lyrics-external .char-inner.singing {
-  /* Default fallback: Dynamic scale and color mix based on real-time progress */
-  color: color-mix(in srgb, var(--accent) calc(var(--lyric-progress-raw, 0) * 100%), #ffffff);
+  /* Common beat pulse fallback (120 BPM) */
+  color: #ffffff;
   z-index: 10;
   position: relative;
-  transition: none;
+  transition: color 100ms ease, text-shadow 100ms ease;
   display: inline-block;
-  transform-origin: left center;
-  transform: scale(calc(1 + (var(--lyric-progress-raw, 0) * 0.12)));
-  text-shadow: 0 0 calc(16px + (var(--lyric-progress-raw, 0) * 12px)) color-mix(in srgb, var(--accent) calc(var(--lyric-progress-raw, 0) * 100%), #ffffff), 0 2px 6px rgba(0, 0, 0, 0.8);
+  animation: lyricBeatPulse 500ms infinite ease-in-out;
 }
 
 .player-lyrics-external .char-inner.singing-enhanced {
-  /* Enhanced mode: real-time precise background fill, NO BOUNCING */
+  /* Enhanced mode: gradient swipe + common beat pulse */
   background: linear-gradient(
     to right, 
     var(--accent) calc(var(--lyric-progress, 0%) - 15%), 
@@ -1015,8 +1013,27 @@ p {
   z-index: 10;
   position: relative;
   display: inline-block;
-  transform-origin: left center;
-  transform: scale(calc(1 + (var(--lyric-progress-raw, 0) * 0.12)));
+  animation: lyricBeatPulseEnhanced 500ms infinite ease-in-out;
+}
+
+@keyframes lyricBeatPulse {
+  0%, 100% { 
+    text-shadow: 0 0 12px rgba(255, 255, 255, 0.5), 0 2px 6px rgba(0, 0, 0, 0.8);
+    color: #ffffff;
+  }
+  20% { 
+    text-shadow: 0 0 24px color-mix(in srgb, var(--accent) 80%, #ffffff), 0 0 32px rgba(255, 255, 255, 0.8), 0 2px 6px rgba(0, 0, 0, 0.8);
+    color: color-mix(in srgb, var(--accent) 30%, #ffffff);
+  }
+}
+
+@keyframes lyricBeatPulseEnhanced {
+  0%, 100% { 
+    filter: drop-shadow(0 0 12px color-mix(in srgb, var(--accent) 30%, transparent)) drop-shadow(0 2px 6px rgba(0, 0, 0, 0.8));
+  }
+  20% { 
+    filter: drop-shadow(0 0 28px var(--accent)) drop-shadow(0 0 16px rgba(255, 255, 255, 0.8)) drop-shadow(0 2px 6px rgba(0, 0, 0, 0.8));
+  }
 }
 
 
