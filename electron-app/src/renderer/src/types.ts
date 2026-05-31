@@ -24,6 +24,12 @@ export interface BackendEvent {
   type: string
   version?: string
   appTitle?: string
+  settings?: {
+    overlay_x?: number
+    overlay_y?: number
+    music_service?: string
+    volume_mode?: 'app' | 'system'
+  }
   track?: TrackState
   command?: string
   message?: string

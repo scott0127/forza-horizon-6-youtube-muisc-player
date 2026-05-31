@@ -19,6 +19,68 @@ import warnings
 from dataclasses import dataclass
 from tkinter import messagebox
 import webbrowser
+import asyncio
+
+try:
+    from pycaw.pycaw import AudioUtilities, ISimpleAudioVolume
+except Exception as exc:
+    AudioUtilities = None
+    ISimpleAudioVolume = None
+
+GLOBAL_LATEST_TRACK = None
+
+def handle_volume_command(command: str, track_info) -> None:
+    settings = load_settings()
+    volume_mode = settings.get("volume_mode", "app")
+
+    if volume_mode == "app":
+        delta = 0.05 if command == "volume_up" else -0.05
+        app_id = (track_info.app_id or "").lower() if track_info else ""
+
+        target_processes = []
+        if "spotify.exe" in app_id or ("spotify" in app_id and not any(b in app_id for b in ("chrome", "edge", "firefox", "brave", "opera"))):
+            target_processes = ["spotify.exe"]
+        elif "chrome" in app_id:
+            target_processes = ["chrome.exe"]
+        elif "edge" in app_id:
+            target_processes = ["msedge.exe"]
+        elif "firefox" in app_id:
+            target_processes = ["firefox.exe"]
+        elif "opera" in app_id:
+            target_processes = ["opera.exe"]
+        elif "brave" in app_id:
+            target_processes = ["brave.exe"]
+        elif "apple" in app_id and "music" in app_id:
+            target_processes = ["applemusic.exe"]
+        elif "youtube" in app_id or "apple" in app_id or "spotify" in app_id:
+            target_processes = ["chrome.exe", "msedge.exe", "firefox.exe", "opera.exe", "brave.exe", "spotify.exe", "applemusic.exe"]
+
+        if target_processes and AudioUtilities is not None:
+            try:
+                import comtypes
+                comtypes.CoInitialize()
+                sessions = AudioUtilities.GetAllSessions()
+                changed = False
+                for session in sessions:
+                    if session.Process:
+                        p_name = session.Process.name().lower()
+                        if p_name in target_processes:
+                            volume_control = session._ctl.QueryInterface(ISimpleAudioVolume)
+                            current_vol = volume_control.GetMasterVolume()
+                            new_vol = max(0.0, min(1.0, current_vol + delta))
+                            volume_control.SetMasterVolume(new_vol, None)
+                            changed = True
+                            emit_backend_event({"type": "volume:update", "volume": new_vol})
+                if changed:
+                    return
+            except Exception:
+                pass
+
+    vk = Win32.VK_VOLUME_UP if command == "volume_up" else Win32.VK_VOLUME_DOWN
+    try:
+        send_media_key(vk)
+    except Exception:
+        pass
 
 os.environ.setdefault("PYGAME_HIDE_SUPPORT_PROMPT", "1")
 warnings.filterwarnings("ignore", category=UserWarning)
@@ -35,7 +97,7 @@ else:
 
 
 APP_TITLE = "Forza 音樂懸浮播放器"
-APP_VERSION = "2.3.1"
+APP_VERSION = "3.0.0"
 YOUTUBE_MUSIC_URL = "https://music.youtube.com"
 SPOTIFY_URL = "https://open.spotify.com"
 APPLE_MUSIC_URL = "https://music.apple.com"
@@ -47,6 +109,8 @@ DEFAULT_SETTINGS = {
     "overlay_x": 24,
     "overlay_y": 24,
     "music_service": "youtube",
+    "volume_mode": "app",
+    "show_lyrics": False,
 }
 
 MUSIC_SERVICES = {
@@ -343,7 +407,102 @@ def is_probably_browser_app_icon(track: TrackInfo, artwork_bytes: bytes) -> bool
     return transparent_ratio > 0.08
 
 
+def clean_and_convert_lrc(lrc_text: str) -> str:
+    if not lrc_text:
+        return ""
+    
+    try:
+        import opencc
+        # s2twp: 簡體到繁體（台灣標準）並轉換詞彙
+        converter = opencc.OpenCC('s2twp.json')
+    except Exception:
+        converter = None
+
+    import re
+    # 常用來標示 metadata 的中文關鍵字
+    zh_meta = r'(?:[词詞曲]|作[词詞曲]|編?[编編]曲|製?制作人|製作人|混音|後期|和[声聲]|原唱|翻唱|錄?录音|錄音|吉他|貝?贝斯|貝斯|弦[乐樂]|發?发行|發行|出品人?|企[划劃]|提供|qq|网易|網易)\s*[:：/|、\s]'
+    # 常用來標示 metadata 的英文關鍵字
+    en_meta = r'(?:vocal|guitar|bass|drum|producer|arranger|lrc|lyric|words|music)\s*(?:[:：/|、]|by\s)'
+    
+    meta_regex = re.compile(rf'^({zh_meta}|{en_meta})\s*.*$', re.IGNORECASE)
+    time_pattern = re.compile(r'^(\[\d{2,}:\d{2}(?:\.\d{2,3})?\])\s*(.*)')
+    
+    lines = lrc_text.splitlines()
+    processed = []
+    
+    for line in lines:
+        match = time_pattern.match(line)
+        if match:
+            timestamp = match.group(1)
+            text = match.group(2).strip()
+            
+            # 過濾純音樂/間奏的標記
+            if text.lower() in ["純音樂", "纯音乐", "間奏", "间奏", "music", "intro", "instrumental"]:
+                processed.append(f"{timestamp} ")
+                continue
+            
+            # 過濾作詞作曲等 Metadata 資訊 (只過濾長度小於 35 的句子)
+            if meta_regex.match(text) and len(text) < 35:
+                # 保留時間軸，但清空歌詞，讓畫面上不會顯示無關資訊
+                processed.append(f"{timestamp} ")
+            else:
+                if converter and text:
+                    text = converter.convert(text)
+                processed.append(f"{timestamp} {text}")
+        else:
+            if converter:
+                line = converter.convert(line)
+            processed.append(line)
+            
+    return "\n".join(processed)
+
+def fetch_lyrics_sync(title: str, artist: str) -> str:
+    if not title:
+        return ""
+        
+    t_lower = title.lower().strip()
+    a_lower = (artist or "").lower().strip()
+    ad_titles = ['廣告', 'advertisement', 'spotify', 'spotify free']
+    browser_artists = ['chrome', 'edge', 'firefox', 'brave', 'safari', 'opera', 'spotify']
+    if t_lower in ad_titles and (not a_lower or any(b in a_lower for b in browser_artists)):
+        return ""
+    try:
+        import syncedlyrics
+        import logging
+        import io
+
+        search_term = f"{title} {artist}".strip()
+        
+        # 關閉套件本身的日誌警告
+        logger = logging.getLogger("syncedlyrics")
+        logger.setLevel(logging.CRITICAL)
+
+        # 多層嘗試策略 (Tiered approach)
+        # 第一層：高品質來源 (Musixmatch 最接近 Spotify，Lrclib 次之)
+        # 第二層：最穩定且快速的亞洲/全球音樂庫 (NetEase 網易雲)
+        # 第三層：備用庫
+        tiers = [
+            ["Musixmatch", "Lrclib"],
+            ["NetEase"],
+            ["Megalobiz", "Lyricsify"]
+        ]
+
+        for tier in tiers:
+            lrc = syncedlyrics.search(search_term, providers=tier)
+            if lrc:
+                return clean_and_convert_lrc(lrc)
+        
+        return ""
+    except Exception:
+        return ""
+
+async def update_lyrics_for_track(track: TrackInfo, output: queue.Queue):
+    lyrics = await asyncio.to_thread(fetch_lyrics_sync, track.title, track.artist)
+    output.put(("lyrics", lyrics))
+
+
 async def media_poll_loop(output: queue.Queue, stop_event: threading.Event, interval: float = 0.8) -> None:
+    global GLOBAL_LATEST_TRACK
     last_fingerprint = ""
     last_metadata_key = ""
     last_artwork_bytes: bytes | None = None
@@ -353,6 +512,7 @@ async def media_poll_loop(output: queue.Queue, stop_event: threading.Event, inte
     while not stop_event.is_set():
         try:
             current = await get_current_track(read_artwork=False)
+            GLOBAL_LATEST_TRACK = current
             metadata_key = get_artwork_key(current)
             metadata_changed = metadata_key != last_metadata_key
 
@@ -364,6 +524,8 @@ async def media_poll_loop(output: queue.Queue, stop_event: threading.Event, inte
             if current.fingerprint != last_fingerprint:
                 last_fingerprint = current.fingerprint
                 output.put(("track", current))
+                if not current.is_empty:
+                    asyncio.create_task(update_lyrics_for_track(current, output))
 
             if metadata_changed:
                 await asyncio.sleep(0.35)
@@ -458,7 +620,9 @@ class HotkeyThread(threading.Thread):
             if msg.message == Win32.WM_HOTKEY:
                 hotkey_id = int(msg.wParam)
                 command, _virtual_key, media_key = self.HOTKEYS.get(hotkey_id, ("", 0, None))
-                if media_key is not None:
+                if command in ("volume_up", "volume_down"):
+                    self.output.put(("command", command))
+                elif media_key is not None:
                     try:
                         send_media_key(media_key)
                     except Exception:
@@ -657,10 +821,14 @@ class GamepadThread(threading.Thread):
 
                             if is_pressed and combo_id not in pressed_combos:
                                 pressed_combos.add(combo_id)
-                                try:
-                                    send_media_key(media_key)
-                                except Exception:
-                                    pass
+                                if media_key in (Win32.VK_VOLUME_UP, Win32.VK_VOLUME_DOWN):
+                                    cmd = "volume_up" if media_key == Win32.VK_VOLUME_UP else "volume_down"
+                                    self.output.put(("command", cmd))
+                                else:
+                                    try:
+                                        send_media_key(media_key)
+                                    except Exception:
+                                        pass
                             elif not is_pressed and combo_id in pressed_combos:
                                 pressed_combos.discard(combo_id)
 
@@ -693,10 +861,14 @@ class GamepadThread(threading.Thread):
 
                             if is_pressed and combo_id not in pressed_combos:
                                 pressed_combos.add(combo_id)
-                                try:
-                                    send_media_key(media_key)
-                                except Exception:
-                                    pass
+                                if media_key in (Win32.VK_VOLUME_UP, Win32.VK_VOLUME_DOWN):
+                                    cmd = "volume_up" if media_key == Win32.VK_VOLUME_UP else "volume_down"
+                                    self.output.put(("command", cmd))
+                                else:
+                                    try:
+                                        send_media_key(media_key)
+                                    except Exception:
+                                        pass
                             elif not is_pressed and combo_id in pressed_combos:
                                 pressed_combos.discard(combo_id)
 
@@ -1749,6 +1921,8 @@ class OverlayUI:
             self.toggle_position_mode()
         elif command == "quit":
             self.quit()
+        elif command in ("volume_up", "volume_down"):
+            handle_volume_command(command, GLOBAL_LATEST_TRACK)
 
     def open_youtube_music(self) -> None:
         self.set_music_service("youtube")
@@ -1859,12 +2033,15 @@ def read_backend_commands(command_queue: queue.Queue, stop_event: threading.Even
 def handle_backend_command(command: dict, stop_event: threading.Event) -> None:
     command_type = str(command.get("type", ""))
 
+    if command_type in ("media:volumeUp", "media:volumeDown"):
+        cmd = "volume_up" if command_type == "media:volumeUp" else "volume_down"
+        handle_volume_command(cmd, GLOBAL_LATEST_TRACK)
+        return
+
     media_keys = {
         "media:playPause": Win32.VK_MEDIA_PLAY_PAUSE,
         "media:next": Win32.VK_MEDIA_NEXT_TRACK,
         "media:previous": Win32.VK_MEDIA_PREV_TRACK,
-        "media:volumeUp": Win32.VK_VOLUME_UP,
-        "media:volumeDown": Win32.VK_VOLUME_DOWN,
         "media:mute": Win32.VK_VOLUME_MUTE,
     }
 
@@ -1892,6 +2069,16 @@ def handle_backend_command(command: dict, stop_event: threading.Event) -> None:
         service = normalize_music_service(command.get("service"))
         settings = load_settings()
         settings["music_service"] = service
+        save_settings(settings)
+    elif command_type == "settings:setVolumeMode":
+        mode = command.get("mode", "app")
+        settings = load_settings()
+        settings["volume_mode"] = mode
+        save_settings(settings)
+    elif command_type == "settings:setShowLyrics":
+        show = command.get("show", False)
+        settings = load_settings()
+        settings["show_lyrics"] = show
         save_settings(settings)
     elif command_type == "app:quit":
         stop_event.set()
@@ -1962,9 +2149,14 @@ def run_stdio_backend() -> int:
                     }
                 )
             elif kind == "command":
-                emit_backend_event({"type": "command", "command": payload})
-                if payload == "quit":
-                    stop_event.set()
+                if payload in ("volume_up", "volume_down"):
+                    handle_volume_command(payload, GLOBAL_LATEST_TRACK)
+                else:
+                    emit_backend_event({"type": "command", "command": payload})
+                    if payload == "quit":
+                        stop_event.set()
+            elif kind == "lyrics":
+                emit_backend_event({"type": "lyrics:update", "lyrics": payload})
             elif kind == "hotkey_error":
                 emit_backend_event({"type": "hotkey:error", "message": payload})
             elif kind == "gamepad_status":

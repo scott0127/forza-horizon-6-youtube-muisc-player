@@ -10,11 +10,11 @@ Set-Location $scriptDir
 $branch = (git rev-parse --abbrev-ref HEAD)
 $isEnglish = ($branch -like '*eng*')
 $suffix = if ($isEnglish) { '_eng' } else { '' }
-$appVersion = '2.4.0'
+$appVersion = '3.0.0'
 $releaseRoot = Join-Path $scriptDir 'release'
 $packageDir = Join-Path $releaseRoot "ForzaMusicOverlay-release$appVersion$suffix"
 $appFilesDir = Join-Path $packageDir 'AppFiles'
-$zipPath = Join-Path $releaseRoot "ForzaMusicOverlay-release$appVersion$suffix.zip"
+$zipPath = Join-Path $releaseRoot "ForzaMusicOverlay-release$appVersion${suffix}_final.zip"
 $launcherOut = Join-Path $scriptDir 'tmp\launcher\ForzaMusicOverlay.exe'
 $iconPath = Join-Path $scriptDir 'electron-app\build\logo.ico'
 

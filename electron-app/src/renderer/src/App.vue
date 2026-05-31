@@ -53,6 +53,9 @@ const lastMessage = ref('')
 const positionMode = ref(false)
 const themeMode = ref<ThemeMode>('dark')
 const playerScale = ref(DEFAULT_PLAYER_SCALE)
+const volumeMode = ref<'app' | 'system'>('app')
+const showLyrics = ref<boolean>(false)
+const rawLyrics = ref<string>('')
 const pressedGamepadButtons = ref<string[]>([])
 const showSpotifyTip = ref(localStorage.getItem('forza:show-spotify-tip') !== 'false')
 function closeSpotifyTip(): void {
@@ -83,6 +86,10 @@ const track = ref<TrackState>({ ...emptyTrack })
 const lastArtwork = ref<{ key: string; dataUrl: string } | null>(null)
 const lastPlayableTrack = ref<TrackState | null>(null)
 const lastPlayableAt = ref(0)
+const appVolume = ref<number | null>(null)
+let volumeHideTimer: number | undefined
+const volumePercent = computed(() => Math.max(0, Math.min(100, Math.round((appVolume.value ?? 0) * 100))))
+const volumeFill = computed(() => `${volumePercent.value}%`)
 
 const isIdle = computed(() => track.value.isEmpty || track.value.status === 'NO_SESSION' || track.value.status === 'NO_MEDIA')
 const accent = computed(() => (isIdle.value ? IDLE_ACCENT : track.value.accent || '#ff0033'))
@@ -113,15 +120,33 @@ const serviceName = computed(() => {
   return 'Windows Media'
 })
 
+const isAd = computed(() => {
+  if (track.value.isEmpty || !track.value.title) return false
+  const title = track.value.title.toLowerCase().trim()
+  const artist = (track.value.artist || '').toLowerCase().trim()
+  
+  const adTitles = ['廣告', 'advertisement', 'spotify', 'spotify free']
+  const browserArtists = ['chrome', 'edge', 'firefox', 'brave', 'safari', 'opera', 'spotify']
+  
+  if (adTitles.includes(title)) {
+    if (!artist || browserArtists.some(b => artist.includes(b))) {
+      return true
+    }
+  }
+  return false
+})
+
 const displayTitle = computed(() => {
   if (track.value.error) return '讀取媒體資訊失敗'
   if (track.value.isEmpty || !track.value.title) return '等待音樂播放'
+  if (isAd.value) return `${serviceName.value} 廣告放送中`
   return track.value.title
 })
 
 const displayArtist = computed(() => {
   if (track.value.error) return track.value.error
   if (track.value.isEmpty) return '請先登入並播放 YouTube Music、Spotify 或 Apple Music'
+  if (isAd.value) return '（此為串流平台原生廣告，非本程式植入）'
   return track.value.artist || track.value.album || track.value.appId || '未知來源'
 })
 
@@ -185,6 +210,100 @@ const controllerButtonAssets = computed<Record<ControllerButton, string>>(() => 
     DOWN: xboxDown
   }
 })
+
+interface LyricLine {
+  time: number
+  text: string
+}
+
+const parsedLyrics = computed<LyricLine[]>(() => {
+  if (!rawLyrics.value) return []
+  const lines = rawLyrics.value.split('\n')
+  const result: LyricLine[] = []
+  for (const line of lines) {
+    const match = line.match(/^\[(\d{2}):(\d{2}\.\d{2,3})\](.*)/)
+    if (match) {
+      const min = parseInt(match[1], 10)
+      const sec = parseFloat(match[2])
+      result.push({ time: min * 60 + sec, text: match[3].trim() })
+    }
+  }
+  return result
+})
+
+const currentLyricData = computed(() => {
+  const currentPos = displayPosition.value
+  const lines = parsedLyrics.value
+  if (!lines.length) return { text: '', id: 0, startTime: 0, duration: 1, chunks: [] }
+  
+  let currentText = ''
+  let currentId = 0
+  let startTime = 0
+  let endTime = 0
+  for (let i = 0; i < lines.length; i++) {
+    if (currentPos >= lines[i].time) {
+      currentText = lines[i].text
+      currentId = i
+      startTime = lines[i].time
+      endTime = (i + 1 < lines.length) ? lines[i + 1].time : startTime + 4
+    } else {
+      break
+    }
+  }
+  
+  const maxDuration = 4.0
+  const duration = Math.min(endTime - startTime, maxDuration) || 1
+  
+  // 使用正則表達式進行智能分詞：
+  // 1. [A-Za-zÀ-ÿ0-9_'\-]+ : 將英文單字、數字、以及包含撇號/連字號的詞（如 Oh-ooh, don't）群組為一個單位
+  // 2. \s+ : 將連續空白群組為一個單位（提供演唱時自然的停頓時間）
+  // 3. . : 其他任何字元（包含中文、韓文、日文等 CJK 字元）則單獨視為一個單位
+  const chunks = currentText.match(/[A-Za-zÀ-ÿ0-9_'\-]+|\s+|./gu) || []
+  
+  return { text: currentText, id: currentId, startTime, duration, chunks }
+})
+
+const activeCharIndex = computed(() => {
+  const data = currentLyricData.value
+  if (!data.chunks.length) return -1
+  const elapsed = displayPosition.value - data.startTime
+  const progress = Math.max(0, Math.min(1, elapsed / data.duration))
+  return Math.floor(progress * data.chunks.length)
+})
+
+const currentLyric = computed(() => currentLyricData.value.text)
+
+const currentLyricChars = computed(() => {
+  const data = currentLyricData.value
+  if (!data.chunks.length) return []
+  
+  return data.chunks.map((char, index) => ({
+    char,
+    key: `lyric-${data.id}-${index}`
+  }))
+})
+
+const lyricsStatus = computed(() => {
+  if (!rawLyrics.value) return '未找到此歌曲歌詞'
+  if (parsedLyrics.value.length > 0) return '已取得動態歌詞'
+  return '僅有靜態歌詞'
+})
+
+const lyricsStatusStyle = computed(() => {
+  if (!rawLyrics.value) return { color: '#ef4444' }
+  if (parsedLyrics.value.length > 0) return { color: '#10b981' }
+  return { color: '#eab308' }
+})
+
+function setShowLyrics(show: boolean): void {
+  showLyrics.value = show
+  window.forzaApi.sendBackendCommand({ type: 'settings:setShowLyrics', show })
+}
+
+function setVolumeMode(mode: 'app' | 'system'): void {
+  volumeMode.value = mode
+  window.forzaApi.sendBackendCommand({ type: 'settings:setVolumeMode', mode })
+}
 
 function formatTime(seconds: number): string {
   const total = Math.max(0, Math.floor(seconds))
@@ -277,6 +396,9 @@ function isIdleTrack(nextTrack: TrackState): boolean {
 }
 
 function setTrack(nextTrack: TrackState): void {
+  if (track.value.title !== nextTrack.title) {
+    rawLyrics.value = ''
+  }
   track.value = nextTrack
   applyAccent(nextTrack)
 
@@ -333,9 +455,27 @@ onMounted(async () => {
   removeListener = window.forzaApi.onBackendEvent((event: BackendEvent) => {
     if (event.type === 'backend:ready') {
       backendStatus.value = `v${event.version ?? ''}`
+      if (event.settings?.volume_mode) {
+        volumeMode.value = event.settings.volume_mode
+      }
+      if (event.settings?.show_lyrics !== undefined) {
+        showLyrics.value = event.settings.show_lyrics
+      }
     } else if (event.type === 'track:update' && event.track) {
       const nextTrack = mergeTrackArtwork(event.track)
       setTrack(nextTrack)
+    } else if (event.type === 'volume:update' && typeof event.volume === 'number') {
+      appVolume.value = event.volume
+      if (volumeHideTimer) window.clearTimeout(volumeHideTimer)
+      volumeHideTimer = window.setTimeout(() => {
+        appVolume.value = null
+      }, 2500)
+    } else if (event.type === 'lyrics:update') {
+      rawLyrics.value = event.lyrics || ''
+    } else if (event.type === 'command') {
+      if (event.command === 'toggle_position_mode') {
+        lastMessage.value = positionMode.value ? '可拖曳左上角懸浮播放器調整位置' : '懸浮播放器位置已儲存'
+      }
     } else if (event.type === 'gamepad:status' && event.message) {
       gamepadStatus.value = event.message
     } else if (event.type === 'gamepad:inputs' && event.pressed) {
@@ -346,6 +486,8 @@ onMounted(async () => {
       backendStatus.value = `後端已停止 (${event.code ?? 'unknown'})`
     } else if (event.type === 'command' && event.command === 'toggle_position_mode') {
       lastMessage.value = positionMode.value ? '可拖曳左上角懸浮播放器調整位置' : '懸浮播放器位置已儲存'
+    } else if (event.type === 'backend:stderr' && event.message) {
+      console.warn('Backend stderr:', event.message)
     } else if (event.message) {
       lastMessage.value = event.message
     }
@@ -591,9 +733,30 @@ onUnmounted(() => {
       <div class="section-title">
         <Gamepad2 :size="18" />
         <div>
-          <h2>遊戲中控制</h2>
+          <h2>遊戲中控制與音量設定</h2>
           <p>{{ gamepadStatus }}</p>
         </div>
+      </div>
+      <div class="volume-mode-row">
+        <span>音量控制目標：</span>
+        <div class="theme-toggle">
+          <button :class="{ selected: volumeMode === 'app' }" type="button" @click="setVolumeMode('app')">
+            目前的音樂網頁 / 應用程式
+          </button>
+          <button :class="{ selected: volumeMode === 'system' }" type="button" @click="setVolumeMode('system')">
+            Windows 系統主音量
+          </button>
+        </div>
+      </div>
+      <div class="volume-mode-row">
+        <span>顯示動態歌詞：</span>
+        <div class="theme-toggle">
+          <button :class="{ selected: showLyrics }" type="button" @click="setShowLyrics(true)">開啟</button>
+          <button :class="{ selected: !showLyrics }" type="button" @click="setShowLyrics(false)">關閉</button>
+        </div>
+        <span v-if="track && track.title" class="lyrics-status-indicator" :style="lyricsStatusStyle">
+          ● {{ lyricsStatus }}
+        </span>
       </div>
       <div class="control-guides">
         <div class="guide-column">
@@ -711,6 +874,18 @@ onUnmounted(() => {
       <div class="radio-progress">
         <div :style="{ width: progressPercent }"></div>
       </div>
+
+      <Transition name="fade">
+        <div v-if="appVolume !== null" class="player-volume-overlay" :style="{ '--vol-percent': appVolume }">
+          <svg class="player-volume-border-svg" viewBox="0 0 548 178" preserveAspectRatio="none">
+            <rect class="lightning-border-active" x="2" y="2" width="544" height="174" rx="24" ry="24" pathLength="100" />
+          </svg>
+          <div class="player-volume-badge">
+            <Volume2 :size="14" class="player-volume-badge-icon" />
+            <span>{{ Math.round(appVolume * 100) }}%</span>
+          </div>
+        </div>
+      </Transition>
     </section>
 
     <!-- Standard dark / luxury player -->
@@ -764,6 +939,63 @@ onUnmounted(() => {
         <div :style="{ width: progressPercent }"></div>
         <span class="progress-thumb" :style="{ left: progressPercent }"></span>
       </div>
+
+      <Transition name="fade">
+        <div v-if="appVolume !== null" class="player-volume-overlay" :style="{ '--vol-percent': appVolume }">
+          <div class="player-volume-border"></div>
+          <div class="player-volume-badge">
+            <Volume2 :size="14" class="player-volume-badge-icon" />
+            <span>{{ Math.round(appVolume * 100) }}%</span>
+          </div>
+        </div>
+      </Transition>
     </section>
+
+    <Transition name="tip-fade">
+      <div v-if="showLyrics && currentLyric" class="player-lyrics-external">
+        <span
+          v-for="(item, index) in currentLyricChars"
+          :key="item.key"
+          class="char-flow-wrapper"
+          :style="{ animationDelay: `${index * 16}ms` }"
+        >
+          <span 
+            class="char-inner"
+            :class="{
+              'sung': index < activeCharIndex,
+              'singing': index === activeCharIndex
+            }"
+          >{{ item.char }}</span>
+        </span>
+      </div>
+    </Transition>
+
+    <!-- SVG Lightning Filter (Performance Optimized) -->
+    <svg style="width:0;height:0;position:absolute;pointer-events:none;" aria-hidden="true">
+      <filter id="lightning-distortion" x="-20%" y="-20%" width="140%" height="140%" color-interpolation-filters="sRGB">
+        <!-- Single noise source (numOctaves=2 is much faster than 3 or 4) -->
+        <feTurbulence type="fractalNoise" baseFrequency="0.04" numOctaves="2" result="noise">
+          <animate attributeName="baseFrequency" values="0.04;0.05;0.03;0.045;0.04" dur="0.15s" repeatCount="indefinite" />
+        </feTurbulence>
+        
+        <!-- Medium jagged main path -->
+        <feDisplacementMap in="SourceGraphic" in2="noise" scale="12" xChannelSelector="R" yChannelSelector="G" result="main" />
+        
+        <!-- Wild branches -->
+        <feDisplacementMap in="SourceGraphic" in2="noise" scale="35" xChannelSelector="B" yChannelSelector="A" result="branches_raw" />
+        
+        <!-- Dim branches -->
+        <feComponentTransfer in="branches_raw" result="branches">
+          <feFuncA type="linear" slope="0.4" />
+        </feComponentTransfer>
+
+        <!-- Combine: Branches, Main, and the un-distorted perfect core -->
+        <feMerge>
+          <feMergeNode in="branches" />
+          <feMergeNode in="main" />
+          <feMergeNode in="SourceGraphic" />
+        </feMerge>
+      </filter>
+    </svg>
   </main>
 </template>
