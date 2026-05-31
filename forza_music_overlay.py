@@ -2317,6 +2317,8 @@ def run_stdio_backend() -> int:
                 emit_backend_event({"type": "gamepad:status", "message": payload})
             elif kind == "gamepad_inputs":
                 emit_backend_event({"type": "gamepad:inputs", "pressed": payload})
+            elif kind == "telemetry_data":
+                emit_backend_event({"type": "telemetry:update", "data": payload})
     finally:
         stop_event.set()
         hotkey_thread.stop()
