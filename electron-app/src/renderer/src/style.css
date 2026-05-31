@@ -985,12 +985,18 @@ p {
 
 
 .player-lyrics-external .char-inner.singing {
-  /* Default fallback: solid pop without bouncing */
+  /* Default fallback: flashing pop without bouncing */
   color: #ffffff;
-  text-shadow: 0 0 16px rgba(255, 255, 255, 0.7), 0 2px 6px rgba(0, 0, 0, 0.8);
   z-index: 10;
   position: relative;
   transition: color 100ms ease, text-shadow 100ms ease;
+  animation: lyricFlash 600ms ease-in-out infinite;
+}
+
+@keyframes lyricFlash {
+  0% { color: #ffffff; text-shadow: 0 0 16px rgba(255, 255, 255, 0.7), 0 2px 6px rgba(0, 0, 0, 0.8); }
+  50% { color: var(--accent); text-shadow: 0 0 16px color-mix(in srgb, var(--accent) 80%, transparent), 0 2px 6px rgba(0, 0, 0, 0.8); }
+  100% { color: #ffffff; text-shadow: 0 0 16px rgba(255, 255, 255, 0.7), 0 2px 6px rgba(0, 0, 0, 0.8); }
 }
 
 .player-lyrics-external .char-inner.singing-enhanced {

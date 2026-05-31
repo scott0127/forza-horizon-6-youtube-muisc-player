@@ -350,15 +350,19 @@ const currentLyricChars = computed(() => {
 })
 
 const lyricsStatus = computed(() => {
+  if (isFetchingLyrics.value) return '尋找歌詞中...'
   if (!rawLyrics.value) return '未找到此歌曲歌詞'
-  if (parsedLyrics.value.length > 0) return '已取得動態歌詞'
-  return '僅有靜態歌詞'
+  if (parsedLyrics.value.some(line => line.hasEnhancedTiming)) return '已取得動態歌詞'
+  if (parsedLyrics.value.length > 0) return '已取得靜態歌詞'
+  return '未找到此歌曲歌詞'
 })
 
 const lyricsStatusStyle = computed(() => {
+  if (isFetchingLyrics.value) return { color: '#f59e0b' }
   if (!rawLyrics.value) return { color: '#ef4444' }
-  if (parsedLyrics.value.length > 0) return { color: '#10b981' }
-  return { color: '#eab308' }
+  if (parsedLyrics.value.some(line => line.hasEnhancedTiming)) return { color: '#10b981' }
+  if (parsedLyrics.value.length > 0) return { color: '#3b82f6' }
+  return { color: '#ef4444' }
 })
 
 function setShowLyrics(show: boolean): void {
@@ -457,6 +461,8 @@ function mergeTrackArtwork(nextTrack: TrackState): TrackState {
   return nextTrack
 }
 
+const isFetchingLyrics = ref(false)
+
 function isIdleTrack(nextTrack: TrackState): boolean {
   return nextTrack.isEmpty || nextTrack.status === 'NO_SESSION' || nextTrack.status === 'NO_MEDIA'
 }
@@ -464,6 +470,7 @@ function isIdleTrack(nextTrack: TrackState): boolean {
 function setTrack(nextTrack: TrackState): void {
   if (track.value.title !== nextTrack.title) {
     rawLyrics.value = ''
+    isFetchingLyrics.value = true
   }
   track.value = nextTrack
   applyAccent(nextTrack)
@@ -538,6 +545,7 @@ onMounted(async () => {
       }, 2500)
     } else if (event.type === 'lyrics:update') {
       rawLyrics.value = event.lyrics || ''
+      isFetchingLyrics.value = false
     } else if (event.type === 'command') {
       if (event.command === 'toggle_position_mode') {
         lastMessage.value = positionMode.value ? '可拖曳左上角懸浮播放器調整位置' : '懸浮播放器位置已儲存'
