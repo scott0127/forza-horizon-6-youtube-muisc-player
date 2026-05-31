@@ -488,7 +488,7 @@ def fetch_lyrics_sync(title: str, artist: str) -> str:
         ]
 
         for tier in tiers:
-            lrc = syncedlyrics.search(search_term, providers=tier)
+            lrc = syncedlyrics.search(search_term, providers=tier, enhanced=True)
             if lrc:
                 return clean_and_convert_lrc(lrc)
         

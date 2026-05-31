@@ -213,21 +213,62 @@ const controllerButtonAssets = computed<Record<ControllerButton, string>>(() => 
   }
 })
 
+interface LyricChunk {
+  text: string
+  time: number
+  duration: number
+}
+
 interface LyricLine {
   time: number
   text: string
+  chunks: LyricChunk[]
+  hasEnhancedTiming: boolean
 }
 
 const parsedLyrics = computed<LyricLine[]>(() => {
   if (!rawLyrics.value) return []
   const lines = rawLyrics.value.split('\n')
   const result: LyricLine[] = []
+  
   for (const line of lines) {
     const match = line.match(/^\[(\d{2}):(\d{2}\.\d{2,3})\](.*)/)
     if (match) {
       const min = parseInt(match[1], 10)
       const sec = parseFloat(match[2])
-      result.push({ time: min * 60 + sec, text: match[3].trim() })
+      const lineTime = min * 60 + sec
+      const rawText = match[3].trim()
+      
+      const enhancedRegex = /<(\d{2}):(\d{2}\.\d{2,3})>([^<]*)/g
+      const chunks: LyricChunk[] = []
+      let enhancedMatch
+      let hasEnhancedTiming = false
+      let cleanText = ''
+      
+      if (/<(\d{2}):(\d{2}\.\d{2,3})>/.test(rawText)) {
+        hasEnhancedTiming = true
+        while ((enhancedMatch = enhancedRegex.exec(rawText)) !== null) {
+          const cMin = parseInt(enhancedMatch[1], 10)
+          const cSec = parseFloat(enhancedMatch[2])
+          const cTime = cMin * 60 + cSec
+          const cText = enhancedMatch[3]
+          
+          if (cText) {
+             chunks.push({ text: cText, time: cTime, duration: 0 })
+             cleanText += cText
+          }
+        }
+        for (let i = 0; i < chunks.length - 1; i++) {
+          chunks[i].duration = Math.max(0.1, chunks[i + 1].time - chunks[i].time)
+        }
+        if (chunks.length > 0) {
+           chunks[chunks.length - 1].duration = 0.5
+        }
+      } else {
+        cleanText = rawText
+      }
+      
+      result.push({ time: lineTime, text: cleanText, chunks, hasEnhancedTiming })
     }
   }
   return result
@@ -236,15 +277,16 @@ const parsedLyrics = computed<LyricLine[]>(() => {
 const currentLyricData = computed(() => {
   const currentPos = displayPosition.value
   const lines = parsedLyrics.value
-  if (!lines.length) return { text: '', id: 0, startTime: 0, duration: 1, chunks: [] }
+  if (!lines.length) return { text: '', id: 0, startTime: 0, duration: 1, chunks: [] as LyricChunk[], hasEnhancedTiming: false }
   
-  let currentText = ''
+  let currentLine = lines[0]
   let currentId = 0
   let startTime = 0
   let endTime = 0
+  
   for (let i = 0; i < lines.length; i++) {
     if (currentPos >= lines[i].time) {
-      currentText = lines[i].text
+      currentLine = lines[i]
       currentId = i
       startTime = lines[i].time
       endTime = (i + 1 < lines.length) ? lines[i + 1].time : startTime + 4
@@ -255,22 +297,42 @@ const currentLyricData = computed(() => {
   
   const maxDuration = 4.0
   const duration = Math.min(endTime - startTime, maxDuration) || 1
+  let finalChunks = currentLine.chunks
   
-  // 使用正則表達式進行智能分詞：
-  // 1. [A-Za-zÀ-ÿ0-9_'\-]+ : 將英文單字、數字、以及包含撇號/連字號的詞（如 Oh-ooh, don't）群組為一個單位
-  // 2. \s+ : 將連續空白群組為一個單位（提供演唱時自然的停頓時間）
-  // 3. . : 其他任何字元（包含中文、韓文、日文等 CJK 字元）則單獨視為一個單位
-  const chunks = currentText.match(/[A-Za-zÀ-ÿ0-9_'\-]+|\s+|./gu) || []
+  if (!currentLine.hasEnhancedTiming) {
+    const rawChunks = currentLine.text.match(/[A-Za-zÀ-ÿ0-9_'\-]+|\s+|./gu) || []
+    finalChunks = rawChunks.map((text, idx) => ({
+       text,
+       time: startTime + (idx / rawChunks.length) * duration,
+       duration: duration / rawChunks.length
+    }))
+  }
   
-  return { text: currentText, id: currentId, startTime, duration, chunks }
+  return { text: currentLine.text, id: currentId, startTime, duration, chunks: finalChunks, hasEnhancedTiming: currentLine.hasEnhancedTiming }
 })
 
 const activeCharIndex = computed(() => {
   const data = currentLyricData.value
   if (!data.chunks.length) return -1
-  const elapsed = displayPosition.value - data.startTime
-  const progress = Math.max(0, Math.min(1, elapsed / data.duration))
-  return Math.floor(progress * data.chunks.length)
+  const currentPos = displayPosition.value
+  let activeIdx = -1
+  for (let i = 0; i < data.chunks.length; i++) {
+    if (currentPos >= data.chunks[i].time) {
+      activeIdx = i
+    } else {
+      break
+    }
+  }
+  return activeIdx
+})
+
+const activeCharDuration = computed(() => {
+  const data = currentLyricData.value
+  const idx = activeCharIndex.value
+  if (idx >= 0 && idx < data.chunks.length) {
+    return data.chunks[idx].duration
+  }
+  return 0.5
 })
 
 const currentLyric = computed(() => currentLyricData.value.text)
@@ -279,8 +341,8 @@ const currentLyricChars = computed(() => {
   const data = currentLyricData.value
   if (!data.chunks.length) return []
   
-  return data.chunks.map((char, index) => ({
-    char,
+  return data.chunks.map((chunk, index) => ({
+    char: chunk.text,
     key: `lyric-${data.id}-${index}`
   }))
 })
@@ -967,6 +1029,7 @@ onUnmounted(() => {
               'sung': index < activeCharIndex,
               'singing': index === activeCharIndex
             }"
+            :style="index === activeCharIndex ? { animationDuration: `${Math.max(0.1, Math.min(activeCharDuration, 1.2))}s` } : {}"
           >{{ item.char }}</span>
         </span>
       </div>
