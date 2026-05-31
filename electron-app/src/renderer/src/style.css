@@ -771,6 +771,37 @@ p {
   50% { opacity: 1; }
 }
 
+/* RPM Telemetry Visuals */
+.rpm-high .smoke-border rect {
+  filter: 
+    url(#lightning-distortion)
+    drop-shadow(0 0 calc(12px + 20px * (var(--rpm-ratio) - 0.8) * 5) color-mix(in srgb, #ff2a00 calc((var(--rpm-ratio) - 0.8) * 500%), var(--accent)))
+    drop-shadow(0 0 calc(36px + 40px * (var(--rpm-ratio) - 0.8) * 5) color-mix(in srgb, #ff2a00 calc((var(--rpm-ratio) - 0.8) * 500%), var(--accent)));
+}
+
+.rpm-redline .smoke-border rect {
+  animation: 
+    border-flow-in 600ms cubic-bezier(0.16, 1, 0.3, 1) forwards,
+    rpmRevLimiter 0.08s infinite alternate;
+}
+
+@keyframes rpmRevLimiter {
+  0% {
+    filter: 
+      url(#lightning-distortion)
+      drop-shadow(0 0 20px #ff2a00)
+      drop-shadow(0 0 60px #ff0000);
+    transform: translateZ(0) scale(1.0);
+  }
+  100% {
+    filter: 
+      url(#lightning-distortion)
+      drop-shadow(0 0 50px #ffffff)
+      drop-shadow(0 0 90px #ff2a00);
+    transform: translateZ(0) scale(1.01) translateY(-1px);
+  }
+}
+
 @keyframes border-flow-in {
   0% { --vol-percent: 0; }
 }

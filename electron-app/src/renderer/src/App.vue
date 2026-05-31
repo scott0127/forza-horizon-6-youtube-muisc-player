@@ -83,9 +83,25 @@ const emptyTrack: TrackState = {
 }
 
 const track = ref<TrackState>({ ...emptyTrack })
+const telemetryRpm = ref(0)
+const telemetryMaxRpm = ref(8000)
+const telemetrySpeed = ref(0)
+
+const rpmRatio = computed(() => {
+  if (telemetryMaxRpm.value <= 0) return 0
+  return Math.max(0, Math.min(1, telemetryRpm.value / telemetryMaxRpm.value))
+})
 const lastArtwork = ref<{ key: string; dataUrl: string } | null>(null)
 const lastPlayableTrack = ref<TrackState | null>(null)
 const lastPlayableAt = ref(0)
+const telemetryRpm = ref(0)
+const telemetryMaxRpm = ref(8000)
+const telemetrySpeed = ref(0)
+
+const rpmRatio = computed(() => {
+  if (telemetryMaxRpm.value <= 0) return 0
+  return Math.max(0, Math.min(1, telemetryRpm.value / telemetryMaxRpm.value))
+})
 const appVolume = ref<number | null>(null)
 let volumeHideTimer: number | undefined
 const volumePercent = computed(() => Math.max(0, Math.min(100, Math.round((appVolume.value ?? 0) * 100))))
@@ -95,6 +111,9 @@ const isIdle = computed(() => track.value.isEmpty || track.value.status === 'NO_
 const accent = computed(() => (isIdle.value ? IDLE_ACCENT : track.value.accent || '#ff0033'))
 const visibleAccent = computed(() => {
   const nextAccent = accent.value.toLowerCase()
+  if (track.value.appId && track.value.appId.toLowerCase().includes('apple')) {
+    return '#888888'
+  }
   if (themeMode.value === 'dark' && (nextAccent === '#111111' || nextAccent === '#000000')) {
     return '#f8fafc'
   }
@@ -563,6 +582,10 @@ onMounted(async () => {
       backendStatus.value = `後端已停止 (${event.code ?? 'unknown'})`
     } else if (event.type === 'command' && event.command === 'toggle_position_mode') {
       lastMessage.value = positionMode.value ? '可拖曳左上角懸浮播放器調整位置' : '懸浮播放器位置已儲存'
+    } else if (event.type === 'telemetry:update' && event.data) {
+      telemetryRpm.value = event.data.rpm
+      telemetryMaxRpm.value = event.data.max_rpm
+      telemetrySpeed.value = event.data.speed
     } else if (event.type === 'backend:stderr' && event.message) {
       console.warn('Backend stderr:', event.message)
     } else if (event.message) {
@@ -910,7 +933,12 @@ onUnmounted(() => {
     </div>
   </main>
 
-  <main v-else class="player-shell" :class="themeClass">
+  <main 
+    v-else 
+    class="player-shell" 
+    :class="[themeClass, { 'rpm-high': rpmRatio > 0.8, 'rpm-redline': rpmRatio > 0.95 }]"
+    :style="{ '--rpm-ratio': rpmRatio }"
+  >
     <!-- Radio (borderless) player -->
     <section v-if="themeMode === 'radio'" :class="['radio-player', { 'position-mode': positionMode, idle: isIdle }]">
       <div class="radio-pulse" :class="{ playing: !isIdle && track.status.toUpperCase() === 'PLAYING' }"></div>
