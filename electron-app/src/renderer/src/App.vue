@@ -352,9 +352,9 @@ const currentLyricChars = computed(() => {
 const lyricsStatus = computed(() => {
   if (isFetchingLyrics.value) return '尋找歌詞中...'
   if (!rawLyrics.value) return '未找到此歌曲歌詞'
-  if (parsedLyrics.value.some(line => line.hasEnhancedTiming)) return '已取得動態歌詞'
-  if (parsedLyrics.value.length > 0) return '已取得靜態歌詞'
-  return '未找到此歌曲歌詞'
+  if (parsedLyrics.value.some(line => line.hasEnhancedTiming)) return '已取得逐字動態歌詞'
+  if (parsedLyrics.value.length > 0) return '已取得逐句動態歌詞'
+  return '僅有靜態歌詞'
 })
 
 const lyricsStatusStyle = computed(() => {
