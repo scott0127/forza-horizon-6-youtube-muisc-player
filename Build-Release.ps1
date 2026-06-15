@@ -1,5 +1,6 @@
 param(
-    [switch]$SkipBuild
+    [switch]$SkipBuild,
+    [string]$ArtifactSuffix = '_portable-test'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -10,12 +11,12 @@ Set-Location $scriptDir
 $branch = (git rev-parse --abbrev-ref HEAD)
 $isEnglish = ($branch -like '*eng*')
 $suffix = if ($isEnglish) { '_eng' } else { '' }
-$appVersion = '3.5.0'
+$appVersion = '4.1.0'
 $releaseRoot = Join-Path $scriptDir 'release'
-$packageDir = Join-Path $releaseRoot "ForzaMusicOverlay-release$appVersion$suffix"
+$packageDir = Join-Path $releaseRoot "GamingMusicOverlay-release$appVersion$suffix$ArtifactSuffix"
 $appFilesDir = Join-Path $packageDir 'AppFiles'
-$zipPath = Join-Path $releaseRoot "ForzaMusicOverlay-release$appVersion${suffix}_final.zip"
-$launcherOut = Join-Path $scriptDir 'tmp\launcher\ForzaMusicOverlay.exe'
+$zipPath = Join-Path $releaseRoot "GamingMusicOverlay-release$appVersion$suffix$ArtifactSuffix.zip"
+$launcherOut = Join-Path $scriptDir 'tmp\launcher\GamingMusicOverlay.exe'
 $iconPath = Join-Path $scriptDir 'electron-app\build\logo.ico'
 
 if (-not (Test-Path -LiteralPath $iconPath)) {
@@ -38,7 +39,7 @@ if (-not $SkipBuild) {
         --noconfirm `
         --noupx `
         --onedir `
-        --name ForzaMusicOverlayBackend `
+        --name GamingMusicOverlayBackend `
         --collect-submodules winsdk `
         --collect-data pygame `
         --hidden-import pygame `
@@ -51,7 +52,7 @@ if (-not $SkipBuild) {
 $electronDist = Join-Path $scriptDir 'electron-app\node_modules\electron\dist'
 $electronExe = Join-Path $electronDist 'electron.exe'
 $appOut = Join-Path $scriptDir 'electron-app\out'
-$backendExe = Join-Path $scriptDir 'dist\ForzaMusicOverlayBackend\ForzaMusicOverlayBackend.exe'
+$backendExe = Join-Path $scriptDir 'dist\GamingMusicOverlayBackend\GamingMusicOverlayBackend.exe'
 
 foreach ($required in @($electronExe, $appOut, $backendExe)) {
     if (-not (Test-Path -LiteralPath $required)) {
@@ -97,24 +98,22 @@ if (Test-Path -LiteralPath $packageDir) {
 New-Item -ItemType Directory -Force -Path $packageDir | Out-Null
 New-Item -ItemType Directory -Force -Path $appFilesDir | Out-Null
 
-Copy-Item -LiteralPath $launcherOut -Destination (Join-Path $packageDir 'ForzaMusicOverlay.exe') -Force
-Copy-Item -LiteralPath '.\release-assets\Install-App.bat' -Destination $packageDir -Force
-Copy-Item -LiteralPath '.\release-assets\Uninstall-App.bat' -Destination $packageDir -Force
+Copy-Item -LiteralPath $launcherOut -Destination (Join-Path $packageDir 'GamingMusicOverlay.exe') -Force
 Copy-Item -LiteralPath '.\README.md' -Destination $packageDir -Force
 Copy-Item -LiteralPath '.\README.txt' -Destination $packageDir -Force
 
 Copy-Item -Path (Join-Path $electronDist '*') -Destination $appFilesDir -Recurse -Force
-Move-Item -LiteralPath (Join-Path $appFilesDir 'electron.exe') -Destination (Join-Path $appFilesDir 'ForzaMusicOverlayApp.exe') -Force
+Move-Item -LiteralPath (Join-Path $appFilesDir 'electron.exe') -Destination (Join-Path $appFilesDir 'GamingMusicOverlayApp.exe') -Force
 
 $appDir = Join-Path $appFilesDir 'resources\app'
 New-Item -ItemType Directory -Force -Path $appDir | Out-Null
 Copy-Item -LiteralPath $appOut -Destination $appDir -Recurse -Force
-("{`"name`":`"forza-music-overlay`",`"version`":`"$appVersion`",`"main`":`"out/main/index.js`"}") |
+("{`"name`":`"gaming-music-overlay`",`"version`":`"$appVersion`",`"main`":`"out/main/index.js`"}") |
     Set-Content -LiteralPath (Join-Path $appDir 'package.json') -Encoding UTF8
 
 $backendDir = Join-Path $appFilesDir 'resources\backend'
 New-Item -ItemType Directory -Force -Path $backendDir | Out-Null
-$backendSourceDir = Join-Path $scriptDir 'dist\ForzaMusicOverlayBackend'
+$backendSourceDir = Join-Path $scriptDir 'dist\GamingMusicOverlayBackend'
 Copy-Item -Path "$backendSourceDir\*" -Destination $backendDir -Recurse -Force
 
 $appAssetsDir = Join-Path $appFilesDir 'resources\app-assets'
@@ -122,8 +121,6 @@ New-Item -ItemType Directory -Force -Path $appAssetsDir | Out-Null
 Copy-Item -LiteralPath '.\electron-app\build\logo.ico' -Destination $appAssetsDir -Force
 Copy-Item -LiteralPath '.\electron-app\build\logo-rounded.png' -Destination (Join-Path $appAssetsDir 'logo.png') -Force
 
-Copy-Item -LiteralPath '.\release-assets\Install-App.ps1' -Destination $appFilesDir -Force
-Copy-Item -LiteralPath '.\release-assets\Uninstall-App.ps1' -Destination $appFilesDir -Force
 Copy-Item -LiteralPath '.\LICENSE' -Destination $appFilesDir -Force
 
 if (Test-Path -LiteralPath $zipPath) {
@@ -141,3 +138,4 @@ Write-Host 'Release package created:'
 Write-Host $zipPath
 Write-Host "Size: $([Math]::Round($zipItem.Length / 1MB, 2)) MB"
 Write-Host "Files: $packageItemCount"
+

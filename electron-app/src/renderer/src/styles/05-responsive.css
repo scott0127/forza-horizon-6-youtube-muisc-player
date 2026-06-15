@@ -1,0 +1,598 @@
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .control-shell.theme-luxury .status-pill,
+  .control-shell.theme-luxury .theme-toggle,
+  .control-shell.theme-luxury .panel,
+  .control-shell.theme-luxury .now-playing,
+  .control-shell.theme-luxury .service-button,
+  .control-shell.theme-luxury .action-grid button {
+    background: rgba(8, 13, 28, 0.92);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 1ms !important;
+    animation-duration: 1ms !important;
+  }
+}
+
+@media (max-width: 760px) {
+  .control-shell {
+    --control-section-gap: 12px;
+  }
+
+  .app-header-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+    padding-bottom: 0;
+  }
+
+  .app-header-row .toolbar-cluster {
+    justify-content: flex-start !important;
+    flex-wrap: wrap !important;
+    width: 100%;
+  }
+
+  .control-shell {
+    padding: 18px;
+  }
+
+  .hero-band,
+  .now-playing,
+  .control-shell.theme-luxury .now-playing {
+    grid-template-columns: 1fr;
+  }
+
+  .hero-band,
+  .control-shell.theme-luxury .hero-band,
+  .control-shell.theme-luxury .toolbar-cluster {
+    display: grid;
+  }
+
+  .hero-band h1 {
+    white-space: normal;
+  }
+
+  .service-grid,
+  .action-grid,
+  .footer-actions,
+  .control-shell.theme-luxury .service-grid,
+  .control-shell.theme-luxury .action-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .control-guides {
+    grid-template-columns: 1fr;
+  }
+
+  .controller-row {
+    grid-template-columns: 110px 1fr;
+    gap: 8px 12px;
+    align-items: center;
+    padding: 8px 10px;
+  }
+
+  .controller-row-actions {
+    grid-column: 1 / -1;
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 4px;
+    border-top: 1px dashed rgba(255, 255, 255, 0.06);
+    padding-top: 6px;
+  }
+
+  .control-shell.theme-luxury .controller-row-actions {
+    border-top-color: rgba(0, 0, 0, 0.06);
+  }
+
+  .size-panel {
+    grid-template-columns: 1fr;
+  }
+
+  .scale-control {
+    grid-template-columns: 42px minmax(0, 1fr) 42px;
+  }
+
+  .scale-reset {
+    grid-column: 1 / -1;
+  }
+
+  .guide-column + .guide-column,
+  .control-shell.theme-luxury .guide-column + .guide-column {
+    padding-top: 18px;
+    padding-left: 0;
+    border-top: 1px solid var(--line);
+    border-left: 0;
+  }
+}
+
+/* iOS 風格頂欄響應式等比例微縮放適配 */
+@media (max-width: 1250px) {
+  .control-shell {
+    --control-section-gap: 12px;
+  }
+
+  .control-shell.theme-dark,
+  .control-shell.theme-radio {
+    padding: 22px;
+  }
+
+  .control-shell.theme-luxury {
+    padding: 22px;
+    --control-section-gap: 14px;
+  }
+
+  .control-shell .theme-toggle button {
+    padding: 0 18px !important;
+    min-height: 44px !important;
+    font-size: 13px !important;
+  }
+  .control-shell .status-pill {
+    padding: 0 18px !important;
+    min-height: 44px !important;
+    font-size: 13px !important;
+    min-width: 104px !important;
+  }
+  .control-shell .toolbar-cluster {
+    gap: 8px !important;
+  }
+
+  .control-shell.theme-dark .hero-band,
+  .control-shell.theme-radio .hero-band {
+    grid-template-columns: minmax(0, 0.96fr) minmax(360px, 0.78fr);
+    gap: 30px;
+    padding-inline: 10px;
+  }
+
+  .control-shell.theme-dark .summary,
+  .control-shell.theme-radio .summary {
+    max-width: 500px;
+    font-size: 18px;
+    line-height: 1.62;
+  }
+
+  .control-shell.theme-dark .sponsor-panel,
+  .control-shell.theme-radio .sponsor-panel {
+    min-height: 238px;
+    padding: 28px 30px;
+    gap: 20px;
+  }
+
+  .control-shell.theme-dark .sponsor-copy h2,
+  .control-shell.theme-radio .sponsor-copy h2 {
+    font-size: 18px;
+    white-space: normal;
+  }
+
+  .control-shell.theme-dark .sponsor-copy p:last-child,
+  .control-shell.theme-radio .sponsor-copy p:last-child {
+    max-width: 300px;
+    font-size: 14px;
+    line-height: 1.58;
+  }
+
+  .control-shell.theme-dark .sponsor-actions,
+  .control-shell.theme-radio .sponsor-actions {
+    gap: 18px;
+  }
+
+  .control-shell.theme-dark .sponsor-qr,
+  .control-shell.theme-radio .sponsor-qr {
+    width: 116px;
+    height: 116px;
+  }
+
+  .control-shell.theme-dark .sponsor-button,
+  .control-shell.theme-radio .sponsor-button {
+    min-width: 136px;
+    min-height: 48px;
+    font-size: 16px;
+  }
+
+  .control-shell.theme-dark .source-panel,
+  .control-shell.theme-radio .source-panel {
+    padding: 24px;
+  }
+
+  .control-shell.theme-dark .source-panel .service-grid,
+  .control-shell.theme-radio .source-panel .service-grid {
+    gap: 24px;
+    margin-top: 24px;
+  }
+
+  .control-shell.theme-dark .source-panel .service-button,
+  .control-shell.theme-radio .source-panel .service-button {
+    min-height: 98px;
+    padding: 0 26px;
+    gap: 16px;
+    font-size: 15px;
+  }
+
+  .control-shell.theme-dark .source-panel .service-brand-image,
+  .control-shell.theme-radio .source-panel .service-brand-image {
+    width: 42px;
+    height: 42px;
+  }
+
+  .control-shell.theme-dark .volume-mode-row .theme-toggle,
+  .control-shell.theme-radio .volume-mode-row .theme-toggle {
+    min-height: 52px;
+  }
+
+  .control-shell.theme-dark .volume-mode-row .theme-toggle button,
+  .control-shell.theme-radio .volume-mode-row .theme-toggle button {
+    min-height: 42px !important;
+    padding: 0 22px !important;
+    font-size: 14px !important;
+  }
+
+  .control-shell.theme-dark .hero-band h1,
+  .control-shell.theme-radio .hero-band h1,
+  .control-shell.theme-luxury .hero-band h1 {
+    font-size: clamp(34px, 4.1vw, 52px) !important;
+  }
+
+  .control-shell.theme-luxury .hero-band {
+    gap: 20px;
+  }
+
+  .control-shell.theme-luxury .hero-copy {
+    min-width: 0;
+  }
+
+  .control-shell.theme-luxury .summary {
+    max-width: 560px;
+  }
+
+  .control-shell.theme-luxury .source-panel .service-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+    margin-top: 18px;
+  }
+
+  .control-shell.theme-luxury .source-panel .service-button {
+    min-height: 82px;
+    padding: 0 26px;
+    gap: 18px;
+    font-size: 16px;
+  }
+
+  .control-shell.theme-luxury .source-panel .service-brand-image {
+    width: 40px;
+    height: 40px;
+  }
+
+  .control-shell.theme-luxury .action-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .control-shell.theme-luxury .action-grid button {
+    min-height: 52px;
+  }
+}
+
+@media (max-width: 1200px) {
+  .control-shell.theme-dark,
+  .control-shell.theme-radio {
+    padding: 24px;
+    --control-section-gap: 12px;
+  }
+
+  .control-shell.theme-luxury {
+    padding: 22px;
+    --control-section-gap: 14px;
+  }
+
+  .control-shell.theme-dark .hero-band,
+  .control-shell.theme-radio .hero-band {
+    grid-template-columns: 1fr;
+    gap: 16px;
+    min-height: 0;
+    padding: 10px 0 6px;
+  }
+
+  .control-shell.theme-dark .hero-side,
+  .control-shell.theme-radio .hero-side {
+    gap: 16px;
+  }
+
+  .control-shell.theme-dark .sponsor-panel,
+  .control-shell.theme-radio .sponsor-panel {
+    grid-template-columns: minmax(0, 1fr) auto;
+    min-height: 0;
+  }
+
+  .control-shell.theme-dark .toolbar-cluster,
+  .control-shell.theme-radio .toolbar-cluster {
+    justify-content: flex-end;
+    flex-wrap: nowrap !important;
+  }
+
+  .control-shell.theme-dark .source-panel .service-grid,
+  .control-shell.theme-radio .source-panel .service-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 24px;
+    margin-top: 24px;
+  }
+
+  .control-shell.theme-dark .source-panel .service-button,
+  .control-shell.theme-radio .source-panel .service-button {
+    min-height: 92px;
+    padding: 0 24px;
+    gap: 16px;
+    font-size: 15px;
+  }
+
+  .control-shell.theme-dark .source-panel .service-brand-image,
+  .control-shell.theme-radio .source-panel .service-brand-image {
+    width: 42px;
+    height: 42px;
+  }
+
+  .control-shell.theme-dark .volume-mode-row .theme-toggle button,
+  .control-shell.theme-radio .volume-mode-row .theme-toggle button {
+    min-width: 96px;
+  }
+
+  .control-shell.theme-dark .now-playing,
+  .control-shell.theme-radio .now-playing {
+    grid-template-columns: 150px minmax(0, 1fr);
+  }
+
+  .control-shell.theme-dark .artwork,
+  .control-shell.theme-radio .artwork {
+    width: 150px;
+    height: 150px;
+  }
+
+  .control-shell.theme-luxury .hero-band {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 16px;
+    min-height: 0;
+  }
+
+  .control-shell.theme-luxury .hero-side,
+  .control-shell.theme-luxury .sponsor-panel {
+    width: 100%;
+  }
+
+  .control-shell.theme-luxury .sponsor-panel {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 18px;
+    min-height: 0;
+    padding: 20px;
+  }
+
+  .control-shell.theme-luxury .sponsor-copy p:last-child {
+    max-width: none;
+  }
+
+  .control-shell.theme-luxury .sponsor-qr {
+    width: 96px;
+    height: 96px;
+  }
+}
+
+@media (max-width: 1000px) {
+  .control-shell .theme-toggle button {
+    padding: 0 14px !important;
+    min-height: 42px !important;
+    font-size: 12px !important;
+  }
+  .control-shell .status-pill {
+    padding: 0 14px !important;
+    min-height: 42px !important;
+    font-size: 12px !important;
+    min-width: 96px !important;
+  }
+  .control-shell .toolbar-cluster {
+    gap: 6px !important;
+  }
+  .control-shell.theme-dark .hero-band h1,
+  .control-shell.theme-radio .hero-band h1,
+  .control-shell.theme-luxury .hero-band h1 {
+    font-size: clamp(26px, 3.5vw, 38px) !important;
+  }
+
+  .control-shell.theme-luxury .toolbar-cluster {
+    flex-wrap: wrap !important;
+    justify-content: flex-end;
+  }
+
+  .control-shell.theme-luxury .source-panel .service-button {
+    min-height: 78px;
+    padding: 0 22px;
+  }
+
+  .control-shell.theme-luxury .action-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .control-shell.theme-luxury .size-panel {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Responsive source picker overrides keep the image-matched dark/radio block
+   usable after its higher-specificity desktop rules are applied. */
+@media (max-width: 760px) {
+  .control-shell.theme-dark,
+  .control-shell.theme-radio {
+    padding: 18px;
+    --control-section-gap: 12px;
+  }
+
+  .control-shell.theme-luxury {
+    padding: 18px;
+    --control-section-gap: 12px;
+  }
+
+  .control-shell.theme-dark .hero-band::before,
+  .control-shell.theme-dark .hero-band::after,
+  .control-shell.theme-radio .hero-band::before,
+  .control-shell.theme-radio .hero-band::after {
+    display: none;
+  }
+
+  .control-shell.theme-dark .hero-band h1,
+  .control-shell.theme-radio .hero-band h1 {
+    font-size: clamp(40px, 13vw, 54px);
+  }
+
+  .control-shell.theme-dark .summary,
+  .control-shell.theme-radio .summary {
+    font-size: 17px;
+  }
+
+  .control-shell.theme-dark .theme-toggle,
+  .control-shell.theme-radio .theme-toggle {
+    width: 100%;
+    overflow-x: auto;
+  }
+
+  .control-shell.theme-luxury .theme-toggle {
+    width: 100%;
+    overflow-x: auto;
+  }
+
+  .control-shell.theme-luxury .toolbar-cluster {
+    display: flex;
+    justify-content: flex-start;
+    flex-wrap: wrap !important;
+    width: 100%;
+  }
+
+  .control-shell.theme-dark .theme-toggle button,
+  .control-shell.theme-radio .theme-toggle button {
+    padding: 0 16px;
+    font-size: 14px;
+  }
+
+  .control-shell.theme-luxury .theme-toggle button {
+    padding: 0 16px !important;
+    font-size: 13px !important;
+  }
+
+  .control-shell.theme-dark .sponsor-panel,
+  .control-shell.theme-radio .sponsor-panel {
+    grid-template-columns: 1fr;
+    min-height: 0;
+    padding: 24px;
+  }
+
+  .control-shell.theme-luxury .hero-band {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  .control-shell.theme-luxury .summary {
+    font-size: 15px;
+  }
+
+  .control-shell.theme-luxury .sponsor-panel {
+    grid-template-columns: 1fr;
+    min-height: 0;
+    padding: 18px;
+  }
+
+  .control-shell.theme-dark .sponsor-copy h2,
+  .control-shell.theme-radio .sponsor-copy h2,
+  .control-shell.theme-luxury .sponsor-copy h2 {
+    white-space: normal;
+  }
+
+  .control-shell.theme-dark .sponsor-actions,
+  .control-shell.theme-radio .sponsor-actions {
+    justify-items: start;
+  }
+
+  .control-shell.theme-luxury .sponsor-actions {
+    justify-content: flex-start;
+  }
+
+  .control-shell.theme-dark .source-panel,
+  .control-shell.theme-radio .source-panel {
+    padding: 22px;
+  }
+
+  .control-shell.theme-luxury .source-panel {
+    padding: 18px;
+  }
+
+  .control-shell.theme-dark .source-panel .service-grid,
+  .control-shell.theme-radio .source-panel .service-grid {
+    grid-template-columns: 1fr;
+    gap: 18px;
+  }
+
+  .control-shell.theme-luxury .source-panel .service-grid {
+    grid-template-columns: 1fr;
+    gap: 14px;
+  }
+
+  .control-shell.theme-dark .source-panel .service-button-wrapper,
+  .control-shell.theme-radio .source-panel .service-button-wrapper {
+    padding-top: 18px;
+  }
+
+  .control-shell.theme-dark .source-panel .spotify-tip-trigger,
+  .control-shell.theme-radio .source-panel .spotify-tip-trigger {
+    top: 40px;
+    right: 54px;
+  }
+
+  .control-shell.theme-luxury .source-panel .spotify-tip-trigger {
+    top: 16px;
+    right: 48px;
+  }
+
+  .control-shell.theme-dark .source-panel .service-button,
+  .control-shell.theme-radio .source-panel .service-button {
+    min-height: 92px;
+    padding: 0 28px;
+  }
+
+  .control-shell.theme-luxury .source-panel .service-button {
+    min-height: 76px;
+    padding: 0 22px;
+  }
+
+  .control-shell.theme-luxury .action-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .control-shell.theme-dark .now-playing,
+  .control-shell.theme-radio .now-playing {
+    grid-template-columns: 1fr;
+    gap: 22px;
+    padding: 24px;
+  }
+
+  .control-shell.theme-luxury .now-playing {
+    grid-template-columns: 1fr;
+    gap: 18px;
+    padding: 18px;
+  }
+
+  .control-shell.theme-dark .artwork,
+  .control-shell.theme-radio .artwork {
+    width: min(100%, 220px);
+    height: auto;
+    aspect-ratio: 1;
+  }
+
+  .control-shell.theme-luxury .artwork {
+    width: min(100%, 180px);
+    height: auto;
+    aspect-ratio: 1;
+  }
+}
+

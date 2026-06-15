@@ -1,0 +1,12 @@
+prefix=D:/a/OpenCC/OpenCC/build/lib.win-amd64-cpython-312/opencc/clib
+exec_prefix=${prefix}
+libdir=D:/a/OpenCC/OpenCC/build/lib.win-amd64-cpython-312/opencc/clib/lib
+includedir=D:/a/OpenCC/OpenCC/build/lib.win-amd64-cpython-312/opencc/clib/include
+plugindir=D:/a/OpenCC/OpenCC/build/lib.win-amd64-cpython-312/opencc/clib/bin/plugins
+
+Name: opencc
+Description: Open Chinese Convert
+Version: 1.3.1
+Requires:
+Libs: -L${libdir} -lopencc
+Cflags: -I${includedir}/opencc

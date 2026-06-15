@@ -31,9 +31,9 @@ if ($LASTEXITCODE -ne 0) {
 & $venvPython -m PyInstaller `
     --clean `
     --noconsole `
+    --onedir `
     --noupx `
-    --onefile `
-    --name ForzaMusicOverlay `
+    --name GamingMusicOverlay `
     --collect-submodules winsdk `
     --collect-data pygame `
     --hidden-import pygame `
@@ -43,4 +43,5 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 Write-Host 'Build complete:'
-Write-Host (Join-Path $scriptDir 'dist\ForzaMusicOverlay.exe')
+Write-Host (Join-Path $scriptDir 'dist\GamingMusicOverlay\GamingMusicOverlay.exe')
+

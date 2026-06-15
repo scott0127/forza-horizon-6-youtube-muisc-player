@@ -1,0 +1,25 @@
+{
+  "name": "gaming-music-overlay-promo",
+  "private": true,
+  "version": "1.0.0",
+  "scripts": {
+    "studio": "remotion studio src/index.ts",
+    "still": "remotion still src/index.ts GamingMusicPromo",
+    "render": "remotion render src/index.ts GamingMusicPromo out/gaming-music-overlay-promo.mp4 --codec=h264 --crf=18",
+    "render:demo": "remotion render src/index.ts GamingMusicDemo10s out/gaming-music-overlay-demo-10s.mp4 --codec=h264 --crf=18"
+  },
+  "dependencies": {
+    "@remotion/cli": "^4.0.300",
+    "@remotion/media": "^4.0.471",
+    "@remotion/transitions": "^4.0.300",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "remotion": "^4.0.300"
+  },
+  "devDependencies": {
+    "@types/react": "^19.1.0",
+    "@types/react-dom": "^19.1.0",
+    "typescript": "^5.8.3"
+  }
+}
+

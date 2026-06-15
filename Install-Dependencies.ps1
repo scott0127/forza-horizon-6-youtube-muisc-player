@@ -40,4 +40,4 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 Write-Host 'Dependencies installed.'
-Write-Host 'Run Run-Overlay.vbs to start the app.'
+Write-Host 'Run Run-Overlay.bat to start the app.'

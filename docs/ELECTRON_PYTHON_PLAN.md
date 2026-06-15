@@ -1,6 +1,6 @@
 # Electron + Python Migration Plan
 
-本文件規劃 Forza 音樂懸浮播放器從 Tkinter UI 遷移到 Electron + Vue 3 + Vite + TypeScript，同時保留 Python 作為 Windows 媒體控制後端。
+本文件規劃 Gaming Music Overlay從 Tkinter UI 遷移到 Electron + Vue 3 + Vite + TypeScript，同時保留 Python 作為 Windows 媒體控制後端。
 
 ## 目標
 
@@ -19,7 +19,7 @@
 ## 目錄安排
 
 ```text
-forza-music-overlay-python/
+gaming-music-overlay-python/
   forza_music_overlay.py             # 現有 Python app；新增 --stdio-backend 給 Electron 呼叫
   requirements.txt                   # Python 依賴
   Build-Release.ps1                  # 既有 Tkinter 發布腳本，先保留
@@ -89,7 +89,7 @@ Electron -> Python:
 
 正式打包時：
 
-1. PyInstaller 將 Python backend 打成 `ForzaMusicBackend.exe`。
+1. PyInstaller 將 Python backend 打成 `GamingMusicBackend.exe`。
 2. electron-builder 把 backend exe 放進 Electron resources。
 3. Electron 安裝包建立桌面捷徑、開始功能表捷徑、解除安裝入口。
 4. 最終產出使用者只看到安裝檔或 portable exe，不需要手動安裝 Python/Node/依賴。
@@ -113,3 +113,4 @@ Electron -> Python:
 5. 將快捷鍵命令導到 Electron 視窗狀態。
 6. 加入 tray，避免隱藏控制台後找不到程式。
 7. 建立 Electron 打包流程與版本號策略。
+

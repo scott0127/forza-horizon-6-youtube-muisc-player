@@ -1,0 +1,88 @@
+/* Beautiful permanent tooltip & L3 wrapper styles */
+.button-wrapper {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.permanent-tooltip {
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%) translateY(-10px);
+  z-index: 50;
+  padding: 5px 9px;
+  border-radius: 6px;
+  border: 1px solid #10b981; /* High fidelity green highlight */
+  background: rgba(15, 23, 42, 0.94); /* Glossy dark slate */
+  box-shadow: 
+    0 8px 16px rgba(0, 0, 0, 0.5), 
+    0 0 12px rgba(16, 185, 129, 0.3);
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1;
+  white-space: nowrap;
+  pointer-events: none;
+  animation: tooltip-float 2.5s infinite ease-in-out;
+}
+
+/* Elegant indicator arrow under the tooltip bubble */
+.permanent-tooltip::after {
+  content: "";
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border-width: 6px;
+  border-style: solid;
+  border-color: #10b981 transparent transparent transparent;
+}
+
+.permanent-tooltip::before {
+  content: "";
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%) translateY(-1px);
+  border-width: 5px;
+  border-style: solid;
+  border-color: rgba(15, 23, 42, 0.94) transparent transparent transparent;
+  z-index: 1;
+}
+
+/* Subtle premium bobbing animation for visual interest */
+@keyframes tooltip-float {
+  0%, 100% {
+    transform: translateX(-50%) translateY(-10px);
+  }
+  50% {
+    transform: translateX(-50%) translateY(-16px);
+  }
+}
+
+/* Highly responsive tactile push state for active gamepad buttons */
+.xbox-button-img {
+  transition: transform 0.12s cubic-bezier(0.16, 1, 0.3, 1), filter 0.12s ease;
+}
+
+.xbox-button-img.active {
+  transform: scale(0.85) translateY(1.5px) !important;
+  filter: 
+    drop-shadow(0 0 14px var(--accent)) 
+    drop-shadow(0 0 4px var(--accent))
+    drop-shadow(0 3px 6px rgba(0, 0, 0, 0.55)) !important;
+}
+
+.xbox-button-img.left.active {
+  transform: rotate(-90deg) scale(0.85) translateY(1.5px) !important;
+}
+
+.xbox-button-img.right.active {
+  transform: rotate(90deg) scale(0.85) translateY(1.5px) !important;
+}
+
+
+
+

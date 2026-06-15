@@ -19,6 +19,7 @@ const startOverlayOnly = process.argv.includes('--overlay-only')
 interface AppSettings {
   themeMode?: 'dark' | 'luxury' | 'radio'
   playerScale?: number
+  playerTextScale?: number
   playerBounds?: {
     x: number
     y: number
@@ -36,6 +37,12 @@ const PLAYER_SCALE = {
   default: 0.8,
   min: 0.6,
   max: 1
+}
+
+const PLAYER_TEXT_SCALE = {
+  default: 1,
+  min: 0.85,
+  max: 1.25
 }
 
 function normalizeThemeMode(value: unknown): 'dark' | 'luxury' | 'radio' {
@@ -76,7 +83,19 @@ function backendScriptPath(): string {
 }
 
 function packagedBackendExecutablePath(): string {
-  return path.join(process.resourcesPath, 'backend', 'ForzaMusicOverlayBackend.exe')
+  return path.join(process.resourcesPath, 'backend', 'GamingMusicOverlayBackend.exe')
+}
+
+function normalizePlayerTextScale(value: unknown): number {
+  const scale = Number(value)
+  if (!Number.isFinite(scale)) return PLAYER_TEXT_SCALE.default
+
+  const clamped = Math.min(Math.max(scale, PLAYER_TEXT_SCALE.min), PLAYER_TEXT_SCALE.max)
+  return Math.round(clamped * 100) / 100
+}
+
+function packagedPythonExecutablePath(): string {
+  return path.join(process.resourcesPath, 'backend', 'pythonw.exe')
 }
 
 function appIconPath(): string {
@@ -143,6 +162,10 @@ function getPlayerScale(settings = readSettings()): number {
   return normalizePlayerScale(settings.playerScale)
 }
 
+function getPlayerTextScale(settings = readSettings()): number {
+  return normalizePlayerTextScale(settings.playerTextScale)
+}
+
 function setThemeMode(themeMode: 'dark' | 'luxury' | 'radio'): 'dark' | 'luxury' | 'radio' {
   const settings = readSettings()
   settings.themeMode = normalizeThemeMode(themeMode)
@@ -174,12 +197,49 @@ function sendToRenderers(channel: string, payload: unknown): void {
   }
 }
 
+function setPlayerTextScale(playerTextScale: number): number {
+  const settings = readSettings()
+  settings.playerTextScale = normalizePlayerTextScale(playerTextScale)
+  writeSettings(settings)
+
+  sendToRenderers('ui:player-text-scale', { scale: settings.playerTextScale })
+  return settings.playerTextScale
+}
+
+function backendLogPath(): string {
+  return path.join(app.getPath('userData'), 'backend.log')
+}
+
+function appendBackendLog(message: string): void {
+  try {
+    fs.mkdirSync(path.dirname(backendLogPath()), { recursive: true })
+    fs.appendFileSync(backendLogPath(), `[${new Date().toISOString()}] ${message}\n`, 'utf8')
+  } catch {
+    // Logging must never prevent the app from starting.
+  }
+}
+
+function reportBackendError(message: string): void {
+  appendBackendLog(message)
+  sendToRenderers('backend:event', {
+    type: 'backend:error',
+    message
+  })
+}
+
 function startBackend(): void {
   if (backend) return
 
   const script = backendScriptPath()
   const packagedBackend = packagedBackendExecutablePath()
-  const usePackagedBackend = app.isPackaged && fs.existsSync(packagedBackend)
+  const packagedPython = packagedPythonExecutablePath()
+  const usePortablePython = app.isPackaged && fs.existsSync(packagedPython) && fs.existsSync(script)
+  const useLegacyPackagedBackend = app.isPackaged && !usePortablePython && fs.existsSync(packagedBackend)
+
+  if (app.isPackaged && !usePortablePython && !useLegacyPackagedBackend) {
+    reportBackendError('後端啟動失敗：必要的後端檔案不存在。請重新完整解壓縮 ZIP；若仍缺少檔案，請檢查 Windows 安全性中心的保護歷程，確認檔案是否被隔離。')
+    return
+  }
   
   let python = process.env.FORZA_PYTHON || 'python'
   if (!app.isPackaged) {
@@ -189,15 +249,19 @@ function startBackend(): void {
     }
   }
 
-  backend = spawn(usePackagedBackend ? packagedBackend : python, usePackagedBackend ? ['--stdio-backend'] : [script, '--stdio-backend'], {
-    cwd: usePackagedBackend ? path.dirname(packagedBackend) : path.dirname(script),
+  const executable = usePortablePython ? packagedPython : useLegacyPackagedBackend ? packagedBackend : python
+  const args = useLegacyPackagedBackend ? ['--stdio-backend'] : [script, '--stdio-backend']
+  appendBackendLog(`Starting backend: ${executable} ${args.join(' ')}`)
+  const child = spawn(executable, args, {
+    cwd: path.dirname(script),
     stdio: ['pipe', 'pipe', 'pipe'],
     windowsHide: true
   })
+  backend = child
 
   let buffer = ''
 
-  backend.stdout.on('data', (chunk: Buffer) => {
+  child.stdout.on('data', (chunk: Buffer) => {
     buffer += chunk.toString('utf8')
     const lines = buffer.split(/\r?\n/)
     buffer = lines.pop() ?? ''
@@ -222,19 +286,38 @@ function startBackend(): void {
     }
   })
 
-  backend.stderr.on('data', (chunk: Buffer) => {
+  child.stderr.on('data', (chunk: Buffer) => {
+    appendBackendLog(`stderr: ${chunk.toString('utf8').trimEnd()}`)
     sendToRenderers('backend:event', {
       type: 'backend:stderr',
       message: chunk.toString('utf8')
     })
   })
 
-  backend.on('exit', (code) => {
+  child.stdin.on('error', (error) => {
+    appendBackendLog(`stdin error: ${String(error)}`)
+  })
+
+  child.on('error', (error: NodeJS.ErrnoException) => {
+    const errorCode = error.code ? ` (${error.code})` : ''
+    reportBackendError(`後端啟動失敗${errorCode}：${error.message}。請確認 ZIP 已完整解壓縮，並檢查 Windows 安全性中心是否封鎖或隔離後端檔案。`)
+    if (backend === child) {
+      backend = null
+    }
+  })
+
+  child.on('exit', (code, signal) => {
+    appendBackendLog(`Backend exited: code=${String(code)} signal=${String(signal)}`)
     sendToRenderers('backend:event', {
       type: 'backend:exit',
-      code
+      code,
+      message: code && code !== 0
+        ? `後端異常停止（代碼 ${code}）。請查看 ${backendLogPath()}，並檢查 Windows 安全性中心的保護歷程。`
+        : undefined
     })
-    backend = null
+    if (backend === child) {
+      backend = null
+    }
   })
 }
 
@@ -342,7 +425,7 @@ function createTray(): void {
   if (tray) return
 
   tray = new Tray(appIconPath())
-  tray.setToolTip('Forza Music Floating Player')
+  tray.setToolTip('Gaming Music Overlay')
 
   tray.on('click', () => {
     showControlWindow()
@@ -368,11 +451,11 @@ async function createWindows(): Promise<void> {
   }
 
   controlWindow = new BrowserWindow({
-    width: 980,
-    height: 760,
-    minWidth: 860,
-    minHeight: 620,
-    title: 'Forza Music Floating Player',
+    width: 1480,
+    height: 940,
+    minWidth: 1120,
+    minHeight: 760,
+    title: 'Gaming Music Overlay',
     icon: appIconPath(),
     show: !startOverlayOnly,
     backgroundColor: '#0c111b',
@@ -497,7 +580,7 @@ app.on('second-instance', () => {
 })
 
 app.whenReady().then(async () => {
-  app.setAppUserModelId('tw.scott.forza-music-floating-player')
+  app.setAppUserModelId('tw.scott.gaming-music-overlay')
   await createWindows()
   createTray()
   startBackend()
@@ -572,4 +655,12 @@ ipcMain.handle('player-scale:get', () => {
 
 ipcMain.handle('player-scale:set', (_event, playerScale: number) => {
   return setPlayerScale(playerScale)
+})
+
+ipcMain.handle('player-text-scale:get', () => {
+  return getPlayerTextScale()
+})
+
+ipcMain.handle('player-text-scale:set', (_event, playerTextScale: number) => {
+  return setPlayerTextScale(playerTextScale)
 })

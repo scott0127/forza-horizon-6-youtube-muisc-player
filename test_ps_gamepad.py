@@ -36,8 +36,9 @@ print("  按住 [ L ] 鍵 -> 模擬 L3 / LS (左搖桿下壓)")
 print("  按住 [ J ] 鍵 -> 模擬 ✕ 鍵 / A 鍵 (播放/暫停)")
 print("  按住 [ K ] 鍵 -> 模擬 ◯ 鍵 / B 鍵 (下一首)")
 print("  按住 [ I ] 鍵 -> 模擬 ▢ 鍵 / X 鍵 (上一首)")
-print("  按住 [ W ] 鍵 -> 模擬 D-Pad 上 (音量增加)")
-print("  按住 [ S ] 鍵 -> 模擬 D-Pad 下 (音量減少)")
+print("  按住 [ U ] 鍵 -> 模擬 △ 鍵 / Y 鍵 (可自訂功能)")
+print("  按住 [ A ] 鍵 -> 模擬 D-Pad 左 (預設音量降低)")
+print("  按住 [ D ] 鍵 -> 模擬 D-Pad 右 (預設音量增加)")
 print("  ----------------------------------------------")
 print("  按 [ ESC ] 鍵 -> 退出本程式")
 print("==================================================")
@@ -46,7 +47,7 @@ print("       這樣程式才能監聽全局鍵盤事件。")
 print("==================================================")
 
 active_buttons = set()
-dpad_state = vg.DS4_DPAD_DIRECTIONS.DS4_BUTTON_DPAD_NONE if not is_xbox else 0 # Xbox D-pad is handled via buttons
+dpad_state = vg.DS4_DPAD_DIRECTIONS.DS4_BUTTON_DPAD_NONE if not is_xbox else 0
 
 try:
     while True:
@@ -63,6 +64,7 @@ try:
                 'j': (vg.DS4_BUTTONS.DS4_BUTTON_CROSS, "✕ (手把 A)"),
                 'k': (vg.DS4_BUTTONS.DS4_BUTTON_CIRCLE, "◯ (手把 B)"),
                 'i': (vg.DS4_BUTTONS.DS4_BUTTON_SQUARE, "▢ (手把 X)"),
+                'u': (vg.DS4_BUTTONS.DS4_BUTTON_TRIANGLE, "△ (手把 Y)"),
             }
         else:
             # Xbox 360 按鍵映射
@@ -71,15 +73,12 @@ try:
                 'j': (vg.XUSB_BUTTON.XUSB_GAMEPAD_A, "A 鍵"),
                 'k': (vg.XUSB_BUTTON.XUSB_GAMEPAD_B, "B 鍵"),
                 'i': (vg.XUSB_BUTTON.XUSB_GAMEPAD_X, "X 鍵"),
-                'w': (vg.XUSB_BUTTON.XUSB_GAMEPAD_DPAD_UP, "D-Pad 上"),
-                's': (vg.XUSB_BUTTON.XUSB_GAMEPAD_DPAD_DOWN, "D-Pad 下"),
+                'u': (vg.XUSB_BUTTON.XUSB_GAMEPAD_Y, "Y 鍵"),
+                'a': (vg.XUSB_BUTTON.XUSB_GAMEPAD_DPAD_LEFT, "D-Pad 左"),
+                'd': (vg.XUSB_BUTTON.XUSB_GAMEPAD_DPAD_RIGHT, "D-Pad 右"),
             }
 
         for key, (btn_code, btn_name) in button_mappings.items():
-            # Xbox 的 D-pad W/S 也整合在 button_mappings 中，PS4 另外處理
-            if not is_xbox and key in ['w', 's']:
-                continue 
-                
             is_pressed = keyboard.is_pressed(key)
             if is_pressed and btn_code not in active_buttons:
                 gamepad.press_button(button=btn_code)
@@ -92,27 +91,19 @@ try:
                 state_changed = True
                 print(f"[釋放] 鍵盤鍵 [{key.upper()}] -> 釋放虛擬手把 {btn_name}")
 
-        # PS4 的 D-pad 處理 (Xbox 已在上方作為一般按鈕處理)
         if not is_xbox:
-            is_up = keyboard.is_pressed('w')
-            is_down = keyboard.is_pressed('s')
-
+            is_left = keyboard.is_pressed('a')
+            is_right = keyboard.is_pressed('d')
             new_dpad = vg.DS4_DPAD_DIRECTIONS.DS4_BUTTON_DPAD_NONE
-            if is_up:
-                new_dpad = vg.DS4_DPAD_DIRECTIONS.DS4_BUTTON_DPAD_NORTH
-            elif is_down:
-                new_dpad = vg.DS4_DPAD_DIRECTIONS.DS4_BUTTON_DPAD_SOUTH
+            if is_left:
+                new_dpad = vg.DS4_DPAD_DIRECTIONS.DS4_BUTTON_DPAD_WEST
+            elif is_right:
+                new_dpad = vg.DS4_DPAD_DIRECTIONS.DS4_BUTTON_DPAD_EAST
 
             if new_dpad != dpad_state:
                 gamepad.directional_pad(direction=new_dpad)
                 dpad_state = new_dpad
                 state_changed = True
-                if new_dpad == vg.DS4_DPAD_DIRECTIONS.DS4_BUTTON_DPAD_NORTH:
-                    print("[按下] 鍵盤鍵 [W] -> 觸發虛擬手把 D-Pad [上]")
-                elif new_dpad == vg.DS4_DPAD_DIRECTIONS.DS4_BUTTON_DPAD_SOUTH:
-                    print("[按下] 鍵盤鍵 [S] -> 觸發虛擬手把 D-Pad [下]")
-                else:
-                    print("[釋放] 鍵盤 D-Pad 方向鍵已歸零")
 
         if state_changed:
             gamepad.update()

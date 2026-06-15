@@ -1,6 +1,6 @@
 $ErrorActionPreference = 'Stop'
 
-$installDir = Join-Path $env:LOCALAPPDATA 'Programs\ForzaMusicOverlay'
+$installDir = Join-Path $env:LOCALAPPDATA 'Programs\GamingMusicOverlay'
 
 function ConvertFrom-Utf8Base64 {
     param([string]$Value)
@@ -11,15 +11,15 @@ function ConvertFrom-Utf8Base64 {
 # files without a BOM as the system ANSI code page.
 $appShortcutName = ConvertFrom-Utf8Base64 'Rm9yemEg6Z+z5qiC5oe45rWu5pKt5pS+5Zmo'
 $desktopShortcut = Join-Path ([Environment]::GetFolderPath('Desktop')) "$appShortcutName.lnk"
-$legacyDesktopShortcut = Join-Path ([Environment]::GetFolderPath('Desktop')) 'Forza Music Overlay.lnk'
+$legacyDesktopShortcut = Join-Path ([Environment]::GetFolderPath('Desktop')) 'Gaming Music Overlay.lnk'
 $startMenu = Join-Path ([Environment]::GetFolderPath('Programs')) $appShortcutName
-$legacyStartMenu = Join-Path ([Environment]::GetFolderPath('Programs')) 'Forza Music Overlay'
+$legacyStartMenu = Join-Path ([Environment]::GetFolderPath('Programs')) 'Gaming Music Overlay'
 
 Get-CimInstance Win32_Process |
     Where-Object {
-        ($_.Name -eq 'ForzaMusicOverlayBackend.exe' -or $_.Name -eq 'ForzaMusicOverlayApp.exe' -or $_.Name -eq 'ForzaMusicOverlay.exe' -or $_.Name -eq 'python.exe' -or $_.Name -eq 'pythonw.exe') -and
+        ($_.Name -eq 'GamingMusicOverlayBackend.exe' -or $_.Name -eq 'GamingMusicOverlayApp.exe' -or $_.Name -eq 'GamingMusicOverlay.exe' -or $_.Name -eq 'python.exe' -or $_.Name -eq 'pythonw.exe') -and
         $_.CommandLine -and
-        $_.CommandLine.Contains('ForzaMusicOverlay')
+        $_.CommandLine.Contains('GamingMusicOverlay')
     } |
     ForEach-Object {
         Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue
@@ -46,4 +46,5 @@ if (Test-Path -LiteralPath $installDir) {
 }
 
 Write-Host "$appShortcutName uninstalled."
-Write-Host 'User settings were kept in %LOCALAPPDATA%\ForzaMusicOverlay.'
+Write-Host 'User settings were kept in %LOCALAPPDATA%\GamingMusicOverlay.'
+

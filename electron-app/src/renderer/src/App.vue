@@ -1,14 +1,13 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import gsap from 'gsap'
 import {
   ChevronsLeft,
   ChevronsRight,
   CirclePlay,
-  ExternalLink,
   Gamepad2,
   Gem,
   MonitorUp,
-  Moon,
   Move,
   Music2,
   Minus,
@@ -24,7 +23,6 @@ import {
 import bmcQr from './assets/bmc_qr.png'
 import xboxA from './assets/xbox-a.svg'
 import xboxB from './assets/xbox-b.svg'
-import xboxDown from './assets/xbox-down.png'
 import xboxL3 from './assets/xbox-l3.png'
 import xboxL3Active from './assets/xbox-l3-active.png'
 import xboxUp from './assets/xbox-up.png'
@@ -32,17 +30,111 @@ import xboxX from './assets/xbox-x.svg'
 import psCross from './assets/ps-cross.svg'
 import psCircle from './assets/ps-circle.svg'
 import psSquare from './assets/ps-square.svg'
-import type { BackendEvent, ThemeMode, TrackState } from './types'
+import youtubeMusicIcon from './assets/brand-icons/youtube-music.png'
+import spotifyIcon from './assets/brand-icons/spotify.png'
+import appleIcon from './assets/brand-icons/apple.svg'
+import kkboxIcon from './assets/brand-icons/kkbox.png'
+import ControlThemeToolbar from './components/ControlThemeToolbar.vue'
+import LiquidRuptureBackground from './components/LiquidRuptureBackground.vue'
+import NowPlayingPanel from './components/NowPlayingPanel.vue'
+import ServiceSourcePanel from './components/ServiceSourcePanel.vue'
+import SponsorSupportPanel from './components/SponsorSupportPanel.vue'
+import type { BackendEvent, MusicService, ThemeMode, TrackState } from './types'
 
 const IDLE_ACCENT = '#8b5cf6'
+const SERVICE_ACCENTS: Record<Exclude<MusicService, 'windows'>, string> = {
+  youtube: '#ff0033',
+  spotify: '#1ed760',
+  apple: '#e5e7eb',
+  kkbox: '#39c5ff'
+}
+const sourceServices: Array<{
+  id: Exclude<MusicService, 'windows'>
+  label: string
+  iconSrc: string
+  iconClass?: string
+}> = [
+  { id: 'youtube', label: 'YouTube Music', iconSrc: youtubeMusicIcon },
+  { id: 'spotify', label: 'Spotify', iconSrc: spotifyIcon },
+  { id: 'apple', label: 'Apple Music', iconSrc: appleIcon, iconClass: 'apple-brand-image' },
+  { id: 'kkbox', label: 'KKBOX', iconSrc: kkboxIcon, iconClass: 'kkbox-brand-image' }
+]
+const MANUAL_SERVICE_LOCK_MS = 10000
 const IDLE_GRACE_MS = 2200
 const SPONSOR_URL = 'https://buymeacoffee.com/scott5497'
 const DEFAULT_PLAYER_SCALE = 0.8
 const MIN_PLAYER_SCALE = 0.6
 const MAX_PLAYER_SCALE = 1
 const PLAYER_SCALE_STEP = 0.05
-type ControllerButton = 'L3' | 'L3_ACTIVE' | 'A' | 'B' | 'X' | 'UP' | 'DOWN' | 'LEFT' | 'RIGHT'
+const DEFAULT_PLAYER_TEXT_SCALE = 1
+const MIN_PLAYER_TEXT_SCALE = 0.85
+const MAX_PLAYER_TEXT_SCALE = 1.25
+const PLAYER_TEXT_SCALE_STEP = 0.05
+const SPOTIFY_TIP_AUTO_CLOSE_MS = 5000
+type GraphicalControllerButton = 'L3' | 'L3_ACTIVE' | 'A' | 'B' | 'X' | 'DPAD_LEFT' | 'DPAD_RIGHT'
+type AssignableControllerButton =
+  | 'A'
+  | 'B'
+  | 'X'
+  | 'Y'
+  | 'LB'
+  | 'RB'
+  | 'R3'
+  | 'DPAD_UP'
+  | 'DPAD_DOWN'
+  | 'DPAD_LEFT'
+  | 'DPAD_RIGHT'
+  | 'LT'
+  | 'RT'
+  | 'LS_UP'
+  | 'LS_DOWN'
+  | 'LS_LEFT'
+  | 'LS_RIGHT'
+  | 'RS_UP'
+  | 'RS_DOWN'
+  | 'RS_LEFT'
+  | 'RS_RIGHT'
+type GamepadAction = 'play_pause' | 'next_track' | 'previous_track' | 'volume_up' | 'volume_down'
+type GamepadBindings = Record<GamepadAction, AssignableControllerButton>
+const DEFAULT_GAMEPAD_BINDINGS: GamepadBindings = {
+  play_pause: 'A',
+  next_track: 'B',
+  previous_track: 'X',
+  volume_up: 'DPAD_RIGHT',
+  volume_down: 'DPAD_LEFT'
+}
+const gamepadBindingRows: Array<{ action: GamepadAction; label: string }> = [
+  { action: 'play_pause', label: '播放 / 暫停' },
+  { action: 'next_track', label: '下一首' },
+  { action: 'previous_track', label: '上一首' },
+  { action: 'volume_up', label: '調高音量' },
+  { action: 'volume_down', label: '調低音量' }
+]
+const assignableControllerButtons: AssignableControllerButton[] = [
+  'A',
+  'B',
+  'X',
+  'Y',
+  'LB',
+  'RB',
+  'R3',
+  'DPAD_UP',
+  'DPAD_DOWN',
+  'DPAD_LEFT',
+  'DPAD_RIGHT',
+  'LT',
+  'RT',
+  'LS_UP',
+  'LS_DOWN',
+  'LS_LEFT',
+  'LS_RIGHT',
+  'RS_UP',
+  'RS_DOWN',
+  'RS_LEFT',
+  'RS_RIGHT'
+]
 const view = new URLSearchParams(window.location.search).get('view') === 'player' ? 'player' : 'control'
+const controlRoot = ref<HTMLElement | null>(null)
 const now = ref(Date.now() / 1000)
 const backendStatus = ref('後端啟動中')
 const gamepadStatus = ref('手把狀態尚未回報')
@@ -53,15 +145,52 @@ const lastMessage = ref('')
 const positionMode = ref(false)
 const themeMode = ref<ThemeMode>('dark')
 const playerScale = ref(DEFAULT_PLAYER_SCALE)
+const playerTextScale = ref(DEFAULT_PLAYER_TEXT_SCALE)
 const volumeMode = ref<'app' | 'system'>('app')
 const showLyrics = ref<boolean>(false)
 const rawLyrics = ref<string>('')
 const pressedGamepadButtons = ref<string[]>([])
-const showSpotifyTip = ref(localStorage.getItem('forza:show-spotify-tip') !== 'false')
+const gamepadBindings = ref<GamepadBindings>({ ...DEFAULT_GAMEPAD_BINDINGS })
+const confirmedGamepadBindings = ref<GamepadBindings>({ ...DEFAULT_GAMEPAD_BINDINGS })
+const gamepadBindingError = ref('')
+const listeningGamepadAction = ref<GamepadAction | null>(null)
+const gamepadCaptureArmed = ref(false)
+const pendingGamepadProfile = ref<{ deviceKey: string; deviceName: string } | null>(null)
+const selectedService = ref<Exclude<MusicService, 'windows'>>('youtube')
+const showSpotifyTip = ref(view === 'control')
+let spotifyTipTimer: number | null = null
+let controlAnimationContext: gsap.Context | null = null
+let activeServiceTween: gsap.core.Tween | null = null
+let manualServiceLockUntil = 0
+
+function clearSpotifyTipTimer(): void {
+  if (spotifyTipTimer !== null) {
+    window.clearTimeout(spotifyTipTimer)
+    spotifyTipTimer = null
+  }
+}
+
+function startSpotifyTipTimer(): void {
+  clearSpotifyTipTimer()
+  if (view !== 'control' || !showSpotifyTip.value) return
+
+  spotifyTipTimer = window.setTimeout(() => {
+    showSpotifyTip.value = false
+    spotifyTipTimer = null
+  }, SPOTIFY_TIP_AUTO_CLOSE_MS)
+}
+
+function openSpotifyTip(): void {
+  showSpotifyTip.value = true
+  startSpotifyTipTimer()
+}
+
 function closeSpotifyTip(): void {
   showSpotifyTip.value = false
-  localStorage.setItem('forza:show-spotify-tip', 'false')
+  clearSpotifyTipTimer()
 }
+
+startSpotifyTipTimer()
 
 const emptyTrack: TrackState = {
   title: '',
@@ -83,29 +212,6 @@ const emptyTrack: TrackState = {
 }
 
 const track = ref<TrackState>({ ...emptyTrack })
-const telemetryRpm = ref(0)
-const telemetryMaxRpm = ref(8000)
-const telemetrySpeed = ref(0)
-const telemetryGear = ref(11) // Default to Neutral (11)
-
-const gearLabel = computed(() => {
-  const g = telemetryGear.value
-  if (g === 0) return 'R'
-  if (g === 11) return 'N'
-  return String(g)
-})
-
-const rpmRatio = computed(() => {
-  if (telemetryMaxRpm.value <= 0) return 0
-  return Math.max(0, Math.min(1, telemetryRpm.value / telemetryMaxRpm.value))
-})
-const rpmStage = computed(() => {
-  const r = rpmRatio.value
-  if (r >= 0.95) return 3
-  if (r >= 0.8) return 2
-  if (r >= 0.6) return 1
-  return 0
-})
 const lastArtwork = ref<{ key: string; dataUrl: string } | null>(null)
 const lastPlayableTrack = ref<TrackState | null>(null)
 const lastPlayableAt = ref(0)
@@ -116,11 +222,25 @@ const volumePercent = computed(() => Math.max(0, Math.min(100, Math.round((appVo
 const volumeFill = computed(() => `${volumePercent.value}%`)
 
 const isIdle = computed(() => track.value.isEmpty || track.value.status === 'NO_SESSION' || track.value.status === 'NO_MEDIA')
-const accent = computed(() => (isIdle.value ? IDLE_ACCENT : track.value.accent || '#ff0033'))
+const accent = computed(() => {
+  if (view === 'control') {
+    return SERVICE_ACCENTS[selectedService.value]
+  }
+
+  if (isIdle.value) return IDLE_ACCENT
+  if (track.value.service && track.value.service !== 'windows') {
+    return track.value.accent || SERVICE_ACCENTS[track.value.service]
+  }
+
+  return track.value.accent || '#ff0033'
+})
 const visibleAccent = computed(() => {
   const nextAccent = accent.value.toLowerCase()
-  if (track.value.appId && track.value.appId.toLowerCase().includes('apple')) {
-    return '#888888'
+  if (view === 'control' && selectedService.value === 'apple') {
+    return '#d8dee8'
+  }
+  if (view === 'player' && track.value.appId && track.value.appId.toLowerCase().includes('apple')) {
+    return '#d8dee8'
   }
   if (themeMode.value === 'dark' && (nextAccent === '#111111' || nextAccent === '#000000')) {
     return '#f8fafc'
@@ -142,9 +262,14 @@ const trackContentKey = computed(() =>
 const serviceName = computed(() => {
   if (isIdle.value) return 'Ready'
   if (track.value.service === 'apple') return 'Apple Music'
+  if (track.value.service === 'kkbox') return 'KKBOX'
   if (track.value.service === 'spotify') return 'Spotify'
   if (track.value.service === 'youtube') return 'YouTube Music'
   return 'Windows Media'
+})
+
+const activeService = computed<Exclude<MusicService, 'windows'>>(() => {
+  return selectedService.value
 })
 
 const isAd = computed(() => {
@@ -172,7 +297,7 @@ const displayTitle = computed(() => {
 
 const displayArtist = computed(() => {
   if (track.value.error) return track.value.error
-  if (track.value.isEmpty) return '請先登入並播放 YouTube Music、Spotify 或 Apple Music'
+  if (track.value.isEmpty) return '請先登入並播放 YouTube Music、Spotify、Apple Music 或 KKBOX'
   if (isAd.value) return '（此為串流平台原生廣告，非本程式植入）'
   return track.value.artist || track.value.album || track.value.appId || '未知來源'
 })
@@ -206,6 +331,7 @@ const themeClass = computed(() => {
   return 'theme-dark'
 })
 const playerScalePercent = computed(() => Math.round(playerScale.value * 100))
+const playerTextScalePercent = computed(() => Math.round(playerTextScale.value * 100))
 const keyboardShortcuts = [
   { keys: 'Ctrl+Alt+Space', action: '播放 / 暫停' },
   { keys: 'Ctrl+Alt+Right', action: '下一首' },
@@ -218,14 +344,20 @@ const keyboardShortcuts = [
   { keys: 'Ctrl+Alt+H', action: '顯示 / 隱藏控制台' },
   { keys: 'Ctrl+Alt+Q', action: '退出程式' }
 ]
-const controllerShortcuts: Array<{ buttons: ControllerButton[]; action: string }> = [
-  { buttons: ['L3', 'A'], action: '播放 / 暫停' },
-  { buttons: ['L3', 'B'], action: '下一首' },
-  { buttons: ['L3', 'X'], action: '上一首' },
-  { buttons: ['L3', 'RIGHT'], action: '調高音量' },
-  { buttons: ['L3', 'LEFT'], action: '調低音量' }
-]
-const controllerButtonAssets = computed<Record<ControllerButton, string>>(() => {
+const controllerShortcuts = computed(() =>
+  gamepadBindingRows.map(({ action, label }) => {
+    const button = gamepadBindings.value[action]
+    const isCustom = button !== DEFAULT_GAMEPAD_BINDINGS[action]
+    return {
+      actionId: action,
+      action: label,
+      buttons: ['L3', button] as GraphicalControllerButton[],
+      comboLabel: `L3 + ${formatGamepadButton(button)}`,
+      isCustom
+    }
+  })
+)
+const controllerButtonAssets = computed<Record<GraphicalControllerButton, string>>(() => {
   const isPs = isPlayStation.value
   return {
     L3: xboxL3,
@@ -233,10 +365,8 @@ const controllerButtonAssets = computed<Record<ControllerButton, string>>(() => 
     A: isPs ? psCross : xboxA,
     B: isPs ? psCircle : xboxB,
     X: isPs ? psSquare : xboxX,
-    UP: xboxUp,
-    DOWN: xboxDown,
-    LEFT: xboxUp, /* Rotated via CSS */
-    RIGHT: xboxUp /* Rotated via CSS */
+    DPAD_LEFT: xboxUp,
+    DPAD_RIGHT: xboxUp
   }
 })
 
@@ -405,6 +535,144 @@ function setVolumeMode(mode: 'app' | 'system'): void {
   window.forzaApi.sendBackendCommand({ type: 'settings:setVolumeMode', mode })
 }
 
+function normalizeGamepadBindings(value: unknown): GamepadBindings {
+  if (!value || typeof value !== 'object') return { ...DEFAULT_GAMEPAD_BINDINGS }
+
+  const candidate = value as Partial<Record<GamepadAction, unknown>>
+  const normalized = { ...DEFAULT_GAMEPAD_BINDINGS }
+  const assignedButtons = new Set<AssignableControllerButton>()
+
+  for (const { action } of gamepadBindingRows) {
+    const button = candidate[action] ?? DEFAULT_GAMEPAD_BINDINGS[action]
+    if (!assignableControllerButtons.includes(button as AssignableControllerButton)) {
+      return { ...DEFAULT_GAMEPAD_BINDINGS }
+    }
+    const normalizedButton = button as AssignableControllerButton
+    if (assignedButtons.has(normalizedButton)) {
+      return { ...DEFAULT_GAMEPAD_BINDINGS }
+    }
+    normalized[action] = normalizedButton
+    assignedButtons.add(normalizedButton)
+  }
+
+  return normalized
+}
+
+function isGamepadButtonAssigned(button: AssignableControllerButton, currentAction: GamepadAction): boolean {
+  return gamepadBindingRows.some(({ action }) => action !== currentAction && gamepadBindings.value[action] === button)
+}
+
+function formatGamepadButton(button: AssignableControllerButton): string {
+  const labels: Record<AssignableControllerButton, string> = {
+    A: 'A',
+    B: 'B',
+    X: 'X',
+    Y: 'Y',
+    LB: 'LB',
+    RB: 'RB',
+    R3: 'R3',
+    DPAD_UP: '↑',
+    DPAD_DOWN: '↓',
+    DPAD_LEFT: '←',
+    DPAD_RIGHT: '→',
+    LT: 'LT',
+    RT: 'RT',
+    LS_UP: '左搖桿 ↑',
+    LS_DOWN: '左搖桿 ↓',
+    LS_LEFT: '左搖桿 ←',
+    LS_RIGHT: '左搖桿 →',
+    RS_UP: '右搖桿 ↑',
+    RS_DOWN: '右搖桿 ↓',
+    RS_LEFT: '右搖桿 ←',
+    RS_RIGHT: '右搖桿 →'
+  }
+  return labels[button]
+}
+
+function beginGamepadCapture(action: GamepadAction): void {
+  listeningGamepadAction.value = listeningGamepadAction.value === action ? null : action
+  gamepadCaptureArmed.value = listeningGamepadAction.value !== null
+    && !assignableControllerButtons.some((button) => pressedGamepadButtons.value.includes(button))
+  if (!listeningGamepadAction.value) {
+    gamepadBindingError.value = ''
+  } else if (gamepadCaptureArmed.value) {
+    gamepadBindingError.value = '請直接按下想與 L3 組合的第二個手把按鍵。'
+  } else {
+    gamepadBindingError.value = '請先放開目前按住的手把按鍵，再按下新的組合鍵。'
+  }
+}
+
+async function saveGamepadBinding(action: GamepadAction, button: AssignableControllerButton): Promise<boolean> {
+  if (isGamepadButtonAssigned(button, action)) {
+    gamepadBindingError.value = `L3 + ${formatGamepadButton(button)} 已經被其他功能使用，請按不同按鍵。`
+    return false
+  }
+
+  const previousBindings = { ...gamepadBindings.value }
+  const nextBindings = {
+    ...gamepadBindings.value,
+    [action]: button
+  }
+  gamepadBindings.value = nextBindings
+  gamepadBindingError.value = ''
+  try {
+    await window.forzaApi.sendBackendCommand({
+      type: 'settings:setGamepadBindings',
+      // Electron IPC cannot clone Vue reactive proxies reliably.
+      bindings: { ...nextBindings }
+    })
+    return true
+  } catch (error) {
+    console.error('Failed to save gamepad binding:', error)
+    gamepadBindings.value = previousBindings
+    gamepadBindingError.value = '手把快捷鍵無法傳送到後端，請重新嘗試。'
+    return false
+  }
+}
+
+async function captureGamepadButton(pressed: string[]): Promise<void> {
+  const action = listeningGamepadAction.value
+  if (!action) return
+
+  const pressedAssignableButtons = assignableControllerButtons.filter((candidate) => pressed.includes(candidate))
+  if (!gamepadCaptureArmed.value) {
+    if (pressedAssignableButtons.length === 0) {
+      gamepadCaptureArmed.value = true
+      gamepadBindingError.value = '請直接按下想與 L3 組合的第二個手把按鍵。'
+    }
+    return
+  }
+
+  const button = pressedAssignableButtons[0]
+  if (!button) return
+
+  if (await saveGamepadBinding(action, button)) {
+    listeningGamepadAction.value = null
+    gamepadCaptureArmed.value = false
+    gamepadBindingError.value = `已設定為 L3 + ${formatGamepadButton(button)}。`
+  }
+}
+
+async function resetGamepadBinding(action: GamepadAction): Promise<void> {
+  if (await saveGamepadBinding(action, DEFAULT_GAMEPAD_BINDINGS[action])) {
+    listeningGamepadAction.value = null
+    gamepadCaptureArmed.value = false
+    gamepadBindingError.value = '已還原預設手把快捷鍵。'
+  }
+}
+
+function chooseGamepadProfile(profile: 'xbox' | 'playstation'): void {
+  if (!pendingGamepadProfile.value) return
+
+  window.forzaApi.sendBackendCommand({
+    type: 'settings:setGamepadProfile',
+    deviceKey: pendingGamepadProfile.value.deviceKey,
+    profile
+  })
+  gamepadStatus.value = `已套用${profile === 'xbox' ? '類 Xbox' : '類 PlayStation'}映射：${pendingGamepadProfile.value.deviceName}`
+  pendingGamepadProfile.value = null
+}
+
 function formatTime(seconds: number): string {
   const total = Math.max(0, Math.floor(seconds))
   const minutes = Math.floor(total / 60)
@@ -416,8 +684,29 @@ function command(type: string): void {
   window.forzaApi.sendBackendCommand({ type })
 }
 
-function openService(type: 'open:youtube' | 'open:spotify' | 'open:apple'): void {
+function openService(type: 'open:youtube' | 'open:spotify' | 'open:apple' | 'open:kkbox'): void {
+  const nextService = type.replace('open:', '') as Exclude<MusicService, 'windows'>
+  selectedService.value = nextService
+  manualServiceLockUntil = Date.now() + MANUAL_SERVICE_LOCK_MS
+  commitAccent(SERVICE_ACCENTS[nextService])
+  animateServiceSelection(nextService)
   command(type)
+}
+
+function openServiceById(service: Exclude<MusicService, 'windows'>): void {
+  openService(`open:${service}` as 'open:youtube' | 'open:spotify' | 'open:apple' | 'open:kkbox')
+}
+
+function animateServiceSelection(service: Exclude<MusicService, 'windows'>): void {
+  if (view !== 'control' || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
+  const target = controlRoot.value?.querySelector<HTMLElement>(`.service-button.${service}`)
+  if (!target) return
+
+  gsap.fromTo(
+    target,
+    { scale: 0.985 },
+    { scale: 1, duration: 0.38, ease: 'back.out(2.2)', overwrite: 'auto' }
+  )
 }
 
 function togglePlayerWindow(): void {
@@ -442,6 +731,16 @@ function applyPlayerScale(nextScale: number): void {
   document.documentElement.style.setProperty('--player-scale', normalizePlayerScale(nextScale).toFixed(2))
 }
 
+function normalizePlayerTextScale(nextScale: number): number {
+  if (!Number.isFinite(nextScale)) return DEFAULT_PLAYER_TEXT_SCALE
+  const clamped = Math.min(Math.max(nextScale, MIN_PLAYER_TEXT_SCALE), MAX_PLAYER_TEXT_SCALE)
+  return Math.round(clamped * 100) / 100
+}
+
+function applyPlayerTextScale(nextScale: number): void {
+  document.documentElement.style.setProperty('--player-text-scale', normalizePlayerTextScale(nextScale).toFixed(2))
+}
+
 async function setPlayerScale(nextScale: number): Promise<void> {
   const normalizedScale = normalizePlayerScale(nextScale)
   playerScale.value = normalizedScale
@@ -450,17 +749,38 @@ async function setPlayerScale(nextScale: number): Promise<void> {
   applyPlayerScale(playerScale.value)
 }
 
+async function setPlayerTextScale(nextScale: number): Promise<void> {
+  const normalizedScale = normalizePlayerTextScale(nextScale)
+  playerTextScale.value = normalizedScale
+  applyPlayerTextScale(normalizedScale)
+  playerTextScale.value = await window.forzaApi.setPlayerTextScale(normalizedScale)
+  applyPlayerTextScale(playerTextScale.value)
+}
+
 function onPlayerScaleInput(event: Event): void {
   const target = event.target as HTMLInputElement
   void setPlayerScale(Number(target.value))
+}
+
+function onPlayerTextScaleInput(event: Event): void {
+  const target = event.target as HTMLInputElement
+  void setPlayerTextScale(Number(target.value))
 }
 
 function adjustPlayerScale(delta: number): void {
   void setPlayerScale(playerScale.value + delta)
 }
 
+function adjustPlayerTextScale(delta: number): void {
+  void setPlayerTextScale(playerTextScale.value + delta)
+}
+
 function resetPlayerScale(): void {
   void setPlayerScale(DEFAULT_PLAYER_SCALE)
+}
+
+function resetPlayerTextScale(): void {
+  void setPlayerTextScale(DEFAULT_PLAYER_TEXT_SCALE)
 }
 
 async function setThemeMode(nextThemeMode: ThemeMode): Promise<void> {
@@ -505,6 +825,12 @@ function setTrack(nextTrack: TrackState): void {
   track.value = nextTrack
   applyAccent(nextTrack)
 
+  if (nextTrack.service === selectedService.value) {
+    manualServiceLockUntil = 0
+  } else if (nextTrack.service && nextTrack.service !== 'windows' && Date.now() > manualServiceLockUntil) {
+    selectedService.value = nextTrack.service
+  }
+
   if (!isIdleTrack(nextTrack)) {
     lastPlayableTrack.value = nextTrack
     lastPlayableAt.value = Date.now()
@@ -516,6 +842,11 @@ function setTrack(nextTrack: TrackState): void {
 let idleColorTimer: any = undefined
 
 function applyAccent(nextTrack: TrackState): void {
+  if (view === 'control') {
+    commitAccent(visibleAccent.value)
+    return
+  }
+
   if (idleColorTimer) {
     window.clearTimeout(idleColorTimer)
     idleColorTimer = undefined
@@ -546,14 +877,57 @@ let removeListener: (() => void) | undefined
 let removePositionModeListener: (() => void) | undefined
 let removeThemeModeListener: (() => void) | undefined
 let removePlayerScaleListener: (() => void) | undefined
+let removePlayerTextScaleListener: (() => void) | undefined
 let clock: number | undefined
 let idleTimer: number | undefined
 
+function runControlEntranceAnimation(): void {
+  if (view !== 'control' || !controlRoot.value) return
+
+  controlAnimationContext?.revert()
+  controlAnimationContext = gsap.context(() => {
+    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    if (reducedMotion) return
+
+    const timeline = gsap.timeline({ defaults: { ease: 'power3.out' } })
+    timeline
+      .from('.hero-copy', { y: 18, duration: 0.62 })
+      .from('.hero-side', { y: 18, duration: 0.58 }, '-=0.4')
+      .from('.source-panel', { y: 18, duration: 0.48 }, '-=0.26')
+      .from('.service-button', { y: 16, scale: 0.985, duration: 0.46, stagger: 0.07 }, '-=0.18')
+      .from('.now-playing, .size-panel, .compact-panel', { y: 14, duration: 0.44, stagger: 0.05 }, '-=0.28')
+  }, controlRoot.value)
+}
+
+function refreshActiveServiceAnimation(): void {
+  activeServiceTween?.kill()
+  activeServiceTween = null
+
+  if (view !== 'control' || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
+  const target = controlRoot.value?.querySelector<HTMLElement>('.service-button.active-service')
+  if (!target) return
+
+  activeServiceTween = gsap.to(target, {
+    y: -3,
+    scale: 1.012,
+    duration: 1.7,
+    ease: 'sine.inOut',
+    repeat: -1,
+    yoyo: true
+  })
+}
+
 onMounted(async () => {
+  await nextTick()
+  runControlEntranceAnimation()
+  refreshActiveServiceAnimation()
+
   themeMode.value = await window.forzaApi.getThemeMode()
   playerScale.value = await window.forzaApi.getPlayerScale()
+  playerTextScale.value = await window.forzaApi.getPlayerTextScale()
   document.documentElement.style.setProperty('--accent', visibleAccent.value)
   applyPlayerScale(playerScale.value)
+  applyPlayerTextScale(playerTextScale.value)
 
   removeListener = window.forzaApi.onBackendEvent((event: BackendEvent) => {
     if (event.type === 'backend:ready') {
@@ -564,6 +938,20 @@ onMounted(async () => {
       if (event.settings?.show_lyrics !== undefined) {
         showLyrics.value = event.settings.show_lyrics
       }
+      if (event.settings?.gamepad_bindings) {
+        const normalizedBindings = normalizeGamepadBindings(event.settings.gamepad_bindings)
+        gamepadBindings.value = normalizedBindings
+        confirmedGamepadBindings.value = { ...normalizedBindings }
+      }
+    } else if (event.type === 'settings:update' && event.settings?.gamepad_bindings) {
+      const normalizedBindings = normalizeGamepadBindings(event.settings.gamepad_bindings)
+      gamepadBindings.value = normalizedBindings
+      confirmedGamepadBindings.value = { ...normalizedBindings }
+    } else if (event.type === 'settings:error' && event.message) {
+      gamepadBindings.value = { ...confirmedGamepadBindings.value }
+      listeningGamepadAction.value = null
+      gamepadCaptureArmed.value = false
+      gamepadBindingError.value = event.message
     } else if (event.type === 'track:update' && event.track) {
       const nextTrack = mergeTrackArtwork(event.track)
       setTrack(nextTrack)
@@ -582,19 +970,24 @@ onMounted(async () => {
       }
     } else if (event.type === 'gamepad:status' && event.message) {
       gamepadStatus.value = event.message
+    } else if (event.type === 'gamepad:profileRequired' && event.deviceKey && event.deviceName) {
+      pendingGamepadProfile.value = {
+        deviceKey: event.deviceKey,
+        deviceName: event.deviceName
+      }
     } else if (event.type === 'gamepad:inputs' && event.pressed) {
       pressedGamepadButtons.value = event.pressed
+      void captureGamepadButton(event.pressed)
     } else if (event.type === 'hotkey:error' && event.message) {
+      lastMessage.value = event.message
+    } else if (event.type === 'backend:error' && event.message) {
+      backendStatus.value = '後端啟動失敗'
       lastMessage.value = event.message
     } else if (event.type === 'backend:exit') {
       backendStatus.value = `後端已停止 (${event.code ?? 'unknown'})`
-    } else if (event.type === 'command' && event.command === 'toggle_position_mode') {
-      lastMessage.value = positionMode.value ? '可拖曳左上角懸浮播放器調整位置' : '懸浮播放器位置已儲存'
-    } else if (event.type === 'telemetry:update' && event.data) {
-      telemetryRpm.value = event.data.rpm
-      telemetryMaxRpm.value = event.data.max_rpm
-      telemetrySpeed.value = event.data.speed
-      telemetryGear.value = event.data.gear ?? 11
+      if (event.message) {
+        lastMessage.value = event.message
+      }
     } else if (event.type === 'backend:stderr' && event.message) {
       console.warn('Backend stderr:', event.message)
     } else if (event.message) {
@@ -617,6 +1010,11 @@ onMounted(async () => {
     applyPlayerScale(playerScale.value)
   })
 
+  removePlayerTextScaleListener = window.forzaApi.onPlayerTextScale((event) => {
+    playerTextScale.value = normalizePlayerTextScale(event.scale)
+    applyPlayerTextScale(playerTextScale.value)
+  })
+
   const tick = () => {
     now.value = Date.now() / 1000
     clock = window.requestAnimationFrame(tick)
@@ -629,13 +1027,28 @@ onUnmounted(() => {
   removePositionModeListener?.()
   removeThemeModeListener?.()
   removePlayerScaleListener?.()
+  removePlayerTextScaleListener?.()
+  clearSpotifyTipTimer()
+  activeServiceTween?.kill()
+  controlAnimationContext?.revert()
   if (idleTimer) window.clearTimeout(idleTimer)
   if (clock) window.cancelAnimationFrame(clock)
+})
+
+watch(activeService, async () => {
+  await nextTick()
+  refreshActiveServiceAnimation()
+})
+
+watch(visibleAccent, (nextAccent) => {
+  document.documentElement.style.setProperty('--accent', nextAccent)
 })
 </script>
 
 <template>
-  <main v-if="view === 'control'" class="control-shell" :class="themeClass">
+  <main v-if="view === 'control'" ref="controlRoot" class="control-shell" :class="themeClass">
+    <LiquidRuptureBackground v-if="themeMode === 'luxury'" :accent="visibleAccent" :theme-mode="themeMode" />
+
     <aside class="luxury-sidebar" aria-label="Luxury showroom navigation">
       <div class="brand-mark">
         <Gem :size="22" />
@@ -649,152 +1062,50 @@ onUnmounted(() => {
     </aside>
 
     <div class="control-content">
+      <header class="app-header-row">
+        <ControlThemeToolbar
+          :theme-mode="themeMode"
+          :backend-status="backendStatus"
+          :accent="visibleAccent"
+          @theme-change="setThemeMode"
+        />
+      </header>
+
       <section class="hero-band">
-        <div>
-          <p class="eyebrow">Forza Music</p>
-          <h1>音樂懸浮播放器</h1>
-          <p class="summary">啟動音樂服務後進入 Forza，歌曲資訊與控制會留在遊戲內，不需要切出視窗。</p>
+        <div class="hero-copy">
+          <div class="brand-title">
+            <p class="eyebrow">Gaming Music Overlay</p>
+            <h1>音樂<span class="hero-title-accent">懸浮</span>播放器</h1>
+          </div>
+          <p class="summary">在遊戲中自由掌控音樂，無需切出視窗。透過 Forza 歌曲資訊與播放控制，保持沉浸體驗。</p>
         </div>
-        <div class="toolbar-cluster">
-          <div class="theme-toggle" aria-label="主題切換">
-            <button :class="{ selected: themeMode === 'dark' }" type="button" @click="setThemeMode('dark')">
-              <Moon :size="15" />
-              暗黑
-            </button>
-            <button :class="{ selected: themeMode === 'luxury' }" type="button" @click="setThemeMode('luxury')">
-              <Sparkles :size="15" />
-              Liquid Glass
-            </button>
-            <button :class="{ selected: themeMode === 'radio' }" type="button" @click="setThemeMode('radio')">
-              <Radio :size="15" />
-              無邊框電台
-            </button>
-          </div>
-          <div class="status-pill" :style="{ borderColor: visibleAccent, color: visibleAccent }">
-            <Radio :size="16" />
-            {{ backendStatus }}
-          </div>
+        <div class="hero-side">
+          <SponsorSupportPanel :sponsor-url="SPONSOR_URL" :qr-src="bmcQr" />
         </div>
       </section>
 
-      <section class="sponsor-panel panel">
-        <div class="sponsor-copy">
-          <p class="eyebrow">贊助支持</p>
-          <h2>支持 Forza Music 持續更新</h2>
-          <p>這個工具是免費的。如果想支持我，或是工具有幫到你，可以請還在讀碩士的我喝杯咖啡<br> QR Code 可掃描，按鈕會開啟贊助頁。</p>
-        </div>
-        <div class="sponsor-actions">
-          <img class="sponsor-qr" :src="bmcQr" alt="Buy Me a Coffee QR Code" />
-          <a class="sponsor-button" :href="SPONSOR_URL" target="_blank" rel="noreferrer">
-            贊助我
-          </a>
-        </div>
-      </section>
+      <ServiceSourcePanel
+        :services="sourceServices"
+        :active-service="activeService"
+        :show-spotify-tip="showSpotifyTip"
+        @open-service="openServiceById"
+        @open-spotify-tip="openSpotifyTip"
+        @close-spotify-tip="closeSpotifyTip"
+      />
 
-    <section id="source" class="panel source-panel">
-      <div class="section-title">
-        <Music2 :size="18" />
-        <div>
-          <h2>選擇音樂來源</h2>
-          <p>按下服務後會開啟對應網站，並自動套用紅色、綠色或黑色主題。</p>
-        </div>
-      </div>
-      <div class="service-grid">
-        <button class="service-button youtube" type="button" @click="openService('open:youtube')">
-          <ExternalLink :size="19" />
-          開啟 YouTube Music
-        </button>
-        <button class="service-button spotify" type="button" @click="openService('open:spotify')">
-          <ExternalLink :size="19" />
-          開啟 Spotify
-        </button>
-        <div class="service-button-wrapper">
-          <button class="service-button apple" type="button" @click="openService('open:apple')">
-            <ExternalLink :size="19" />
-            開啟 Apple Music
-          </button>
-          
-          <Transition name="tip-fade">
-            <div v-if="showSpotifyTip" class="spotify-tip-box">
-              <div class="tip-header">
-                <span class="tip-badge">💡 Spotify Premium 遙控功能</span>
-                <button class="tip-close-btn" type="button" aria-label="關閉提示" @click.stop="closeSpotifyTip">
-                  &times;
-                </button>
-              </div>
-              <p class="tip-text">提醒您！有 Spotify Premium 即可在任何裝置同步遙控控制此電台</p>
-            </div>
-          </Transition>
-
-          <!-- Ultra-sleek technical dashed curved line with glowing pulse dot -->
-          <Transition name="tip-fade">
-            <svg v-if="showSpotifyTip" class="spotify-tip-arrow" viewBox="0 0 160 50" preserveAspectRatio="none">
-              <defs>
-                <linearGradient id="lineGrad" x1="0%" y1="100%" x2="100%" y2="0%">
-                  <stop offset="0%" stop-color="#1ed760" stop-opacity="1" />
-                  <stop offset="100%" stop-color="#1ed760" stop-opacity="0.4" />
-                </linearGradient>
-                <marker id="tip-arrowhead-small" markerWidth="4" markerHeight="4" refX="1" refY="2" orient="auto">
-                  <polygon points="0 0, 4 2, 0 4" fill="#1ed760" />
-                </marker>
-              </defs>
-              <!-- Dashed curved connector from Spotify (left side) to Tip Box bottom (right side) -->
-              <path d="M -80 44 C -40 25, 0 12, 40 8" fill="none" stroke="url(#lineGrad)" stroke-width="1.2" stroke-dasharray="3 3" marker-end="url(#tip-arrowhead-small)" />
-              <!-- Pulsing source node at the Spotify end -->
-              <circle cx="-80" cy="44" r="3.5" fill="#1ed760" />
-              <circle class="pulse-node" cx="-80" cy="44" r="7" fill="none" stroke="#1ed760" stroke-width="1" />
-            </svg>
-          </Transition>
-        </div>
-      </div>
-    </section>
-
-    <section id="now-playing" class="now-playing panel">
-      <div class="artwork" :class="{ idle: isIdle }">
-        <Transition name="art-swap" mode="out-in">
-          <img v-if="track.artworkDataUrl" :key="track.artworkKey" :src="track.artworkDataUrl" alt="Album artwork" />
-          <div v-else :key="isIdle ? 'idle-artwork' : 'empty-artwork'" class="artwork-placeholder">
-            <Music2 :size="34" />
-          </div>
-        </Transition>
-      </div>
-      <div class="track-copy">
-        <div class="track-meta">
-          <span class="source-dot"></span>
-          <span>{{ sourceDisplayLabel }}</span>
-          <strong>{{ track.status.replaceAll('_', ' ') }}</strong>
-        </div>
-        <div class="track-text-frame">
-          <Transition name="text-crossfade" mode="out-in">
-            <div :key="trackContentKey" class="track-text-block">
-              <h2>
-                <span
-                  v-for="(char, index) in titleChars"
-                  :key="index + '-' + char"
-                  class="char-flow"
-                  :style="{ animationDelay: `${index * 16}ms` }"
-                >{{ char }}</span>
-              </h2>
-              <p>
-                <span
-                  v-for="(char, index) in artistChars"
-                  :key="index + '-' + char"
-                  class="char-flow"
-                  :style="{ animationDelay: `${index * 10}ms` }"
-                >{{ char }}</span>
-              </p>
-            </div>
-          </Transition>
-        </div>
-        <div class="progress-row">
-          <span>{{ currentTimeLabel }}</span>
-          <div class="progress-track">
-            <div class="progress-fill" :style="{ width: `${progressRatio * 100}%` }"></div>
-          </div>
-          <span>{{ durationTimeLabel }}</span>
-        </div>
-      </div>
-    </section>
+      <NowPlayingPanel
+        :artwork-key="track.artworkKey"
+        :artwork-data-url="track.artworkDataUrl"
+        :is-idle="isIdle"
+        :source-label="sourceDisplayLabel"
+        :status-label="track.status.replaceAll('_', ' ')"
+        :title-chars="titleChars"
+        :artist-chars="artistChars"
+        :track-content-key="trackContentKey"
+        :current-time-label="currentTimeLabel"
+        :duration-time-label="durationTimeLabel"
+        :progress-ratio="progressRatio"
+      />
 
     <section id="controls" class="action-grid">
       <button type="button" @click="command('media:previous')"><ChevronsLeft :size="20" />上一首</button>
@@ -811,32 +1122,64 @@ onUnmounted(() => {
         <MonitorUp :size="18" />
         <div>
           <h2>懸浮播放器大小</h2>
-          <p>調整左上角播放器縮放，會立即套用並記住設定。</p>
+          <p>調整左上角播放器縮放與文字大小，會立即套用並記住設定。</p>
         </div>
       </div>
-      <div class="scale-control">
-        <button type="button" aria-label="縮小懸浮播放器" @click="adjustPlayerScale(-PLAYER_SCALE_STEP)">
-          <Minus :size="17" />
-        </button>
-        <label class="scale-slider" for="player-scale">
-          <input
-            id="player-scale"
-            type="range"
-            :min="MIN_PLAYER_SCALE"
-            :max="MAX_PLAYER_SCALE"
-            :step="PLAYER_SCALE_STEP"
-            :value="playerScale"
-            @input="onPlayerScaleInput"
-          />
-          <span>{{ playerScalePercent }}%</span>
-        </label>
-        <button type="button" aria-label="放大懸浮播放器" @click="adjustPlayerScale(PLAYER_SCALE_STEP)">
-          <Plus :size="17" />
-        </button>
-        <button type="button" class="scale-reset" @click="resetPlayerScale">
-          <RotateCcw :size="16" />
-          重設
-        </button>
+      <div class="scale-control-stack">
+        <div class="scale-control-row">
+          <span class="scale-control-label">整體大小</span>
+          <div class="scale-control">
+            <button type="button" aria-label="縮小懸浮播放器" @click="adjustPlayerScale(-PLAYER_SCALE_STEP)">
+              <Minus :size="17" />
+            </button>
+            <label class="scale-slider" for="player-scale">
+              <input
+                id="player-scale"
+                type="range"
+                :min="MIN_PLAYER_SCALE"
+                :max="MAX_PLAYER_SCALE"
+                :step="PLAYER_SCALE_STEP"
+                :value="playerScale"
+                @input="onPlayerScaleInput"
+              />
+              <span>{{ playerScalePercent }}%</span>
+            </label>
+            <button type="button" aria-label="放大懸浮播放器" @click="adjustPlayerScale(PLAYER_SCALE_STEP)">
+              <Plus :size="17" />
+            </button>
+            <button type="button" class="scale-reset" @click="resetPlayerScale">
+              <RotateCcw :size="16" />
+              重設
+            </button>
+          </div>
+        </div>
+        <div class="scale-control-row">
+          <span class="scale-control-label">文字大小</span>
+          <div class="scale-control">
+            <button type="button" aria-label="縮小懸浮播放器文字" @click="adjustPlayerTextScale(-PLAYER_TEXT_SCALE_STEP)">
+              <Minus :size="17" />
+            </button>
+            <label class="scale-slider" for="player-text-scale">
+              <input
+                id="player-text-scale"
+                type="range"
+                :min="MIN_PLAYER_TEXT_SCALE"
+                :max="MAX_PLAYER_TEXT_SCALE"
+                :step="PLAYER_TEXT_SCALE_STEP"
+                :value="playerTextScale"
+                @input="onPlayerTextScaleInput"
+              />
+              <span>{{ playerTextScalePercent }}%</span>
+            </label>
+            <button type="button" aria-label="放大懸浮播放器文字" @click="adjustPlayerTextScale(PLAYER_TEXT_SCALE_STEP)">
+              <Plus :size="17" />
+            </button>
+            <button type="button" class="scale-reset" @click="resetPlayerTextScale">
+              <RotateCcw :size="16" />
+              重設
+            </button>
+          </div>
+        </div>
       </div>
     </section>
 
@@ -847,6 +1190,14 @@ onUnmounted(() => {
           <h2>遊戲中控制與音量設定</h2>
           <p>{{ gamepadStatus }}</p>
         </div>
+      </div>
+      <div v-if="pendingGamepadProfile" class="gamepad-profile-prompt">
+        <div>
+          <b>請選擇副廠手把類型</b>
+          <p>無法可靠辨識「{{ pendingGamepadProfile.deviceName }}」，請選擇它使用哪一種按鍵排列。</p>
+        </div>
+        <button type="button" @click="chooseGamepadProfile('xbox')">類 Xbox 手把</button>
+        <button type="button" @click="chooseGamepadProfile('playstation')">類 PlayStation 手把</button>
       </div>
       <div class="volume-mode-row">
         <span>音量控制目標：</span>
@@ -883,8 +1234,9 @@ onUnmounted(() => {
           <div class="guide-heading">手把組合鍵</div>
           <p class="guide-note">按住 L3（左搖桿按下），再按下對應按鍵執行下列功能。</p>
           <div class="controller-grid">
-            <div v-for="(shortcut, shortcutIdx) in controllerShortcuts" :key="shortcut.buttons.join('+')" class="controller-row">
-              <span class="controller-combo" :aria-label="shortcut.buttons.join(' + ')">
+            <div v-for="(shortcut, shortcutIdx) in controllerShortcuts" :key="shortcut.actionId" class="controller-row">
+              <span v-if="shortcut.isCustom" class="custom-controller-combo">{{ shortcut.comboLabel }}</span>
+              <span v-else class="controller-combo" :aria-label="shortcut.comboLabel">
                 <span
                   v-for="button in shortcut.buttons"
                   :key="button"
@@ -902,8 +1254,27 @@ onUnmounted(() => {
                 </span>
               </span>
               <b>{{ shortcut.action }}</b>
+              <span class="controller-row-actions">
+                <button
+                  type="button"
+                  class="controller-customize-button"
+                  :class="{ listening: listeningGamepadAction === shortcut.actionId }"
+                  @click="beginGamepadCapture(shortcut.actionId)"
+                >
+                  {{ listeningGamepadAction === shortcut.actionId ? '等待按鍵...' : '自訂' }}
+                </button>
+                <button
+                  v-if="shortcut.isCustom"
+                  type="button"
+                  class="controller-reset-button"
+                  @click="resetGamepadBinding(shortcut.actionId)"
+                >
+                  還原
+                </button>
+              </span>
             </div>
           </div>
+          <p v-if="gamepadBindingError" class="binding-error">{{ gamepadBindingError }}</p>
         </div>
       </div>
       <p v-if="lastMessage" class="notice">{{ lastMessage }}</p>
@@ -930,14 +1301,24 @@ onUnmounted(() => {
     </section>
 
     <footer class="app-footer">
-      <span>作者：Scott Lin</span>
-      <span>
-        贊助我：
+      <span class="footer-item footer-author">
+        <span class="footer-label">作者：</span>
+        <span class="author-name">Scott Lin</span>
+        <span class="visual-signature" aria-hidden="true">
+          <span class="signature-mark">SL</span>
+          <span class="signature-line"></span>
+        </span>
+      </span>
+      <span class="footer-item">
+        <span class="footer-label">贊助我：</span>
         <a :href="SPONSOR_URL" target="_blank" rel="noreferrer">
           https://buymeacoffee.com/scott5497
         </a>
       </span>
-      <span>聯繫我：<a href="mailto:scott5497ify@gmail.com">scott5497ify@gmail.com</a></span>
+      <span class="footer-item">
+        <span class="footer-label">聯繫我：</span>
+        <a href="mailto:scott5497ify@gmail.com">scott5497ify@gmail.com</a>
+      </span>
     </footer>
     </div>
   </main>
@@ -945,21 +1326,13 @@ onUnmounted(() => {
   <main 
     v-else 
     class="player-shell" 
-    :class="[themeClass, `rpm-tier-${rpmStage}`]"
-    :style="{ '--rpm-ratio': rpmRatio }"
+    :class="themeClass"
   >
-    <!-- Telemetry RPM Glowing Border Overlay -->
-    <svg class="telemetry-glow-border" viewBox="0 0 700 320" preserveAspectRatio="none">
-      <rect class="telemetry-glow-rect" x="2" y="2" width="696" height="316" rx="16" ry="16" />
-    </svg>
-
-    <!-- RPM Debug Info -->
-    <div style="position: absolute; top: 10px; right: 10px; font-size: 11px; color: white; opacity: 0.9; font-family: monospace; z-index: 999; pointer-events: none; background: rgba(0,0,0,0.6); padding: 2px 8px; border-radius: 4px; box-shadow: 0 0 4px rgba(0,0,0,0.5);">
-      RPM: {{ Math.round(telemetryRpm) }} / {{ Math.round(telemetryMaxRpm) }} | GEAR: {{ gearLabel }} | SPD: {{ Math.round(telemetrySpeed) }} | Tier: {{ rpmStage }}
-    </div>
-
     <!-- Radio (borderless) player -->
-    <section v-if="themeMode === 'radio'" :class="['radio-player', { 'position-mode': positionMode, idle: isIdle }]">
+    <section
+      v-if="themeMode === 'radio'"
+      :class="['radio-player', { 'position-mode': positionMode, idle: isIdle }]"
+    >
       <div class="radio-pulse" :class="{ playing: !isIdle && track.status.toUpperCase() === 'PLAYING' }"></div>
       <div class="radio-artwork" :class="{ idle: isIdle }">
         <Transition name="art-swap" mode="out-in">

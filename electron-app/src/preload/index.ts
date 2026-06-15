@@ -21,6 +21,11 @@ contextBridge.exposeInMainWorld('forzaApi', {
     ipcRenderer.on('ui:player-scale', listener)
     return () => ipcRenderer.removeListener('ui:player-scale', listener)
   },
+  onPlayerTextScale(callback: (event: unknown) => void) {
+    const listener = (_event: Electron.IpcRendererEvent, payload: unknown) => callback(payload)
+    ipcRenderer.on('ui:player-text-scale', listener)
+    return () => ipcRenderer.removeListener('ui:player-text-scale', listener)
+  },
   sendBackendCommand(command: Record<string, unknown>) {
     return ipcRenderer.invoke('backend:command', command)
   },
@@ -47,5 +52,11 @@ contextBridge.exposeInMainWorld('forzaApi', {
   },
   setPlayerScale(playerScale: number) {
     return ipcRenderer.invoke('player-scale:set', playerScale)
+  },
+  getPlayerTextScale() {
+    return ipcRenderer.invoke('player-text-scale:get')
+  },
+  setPlayerTextScale(playerTextScale: number) {
+    return ipcRenderer.invoke('player-text-scale:set', playerTextScale)
   }
 })

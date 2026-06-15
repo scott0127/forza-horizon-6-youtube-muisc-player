@@ -13,13 +13,13 @@ internal static class Program
         {
             string launcherDir = AppDomain.CurrentDomain.BaseDirectory;
             string appDir = Path.Combine(launcherDir, "AppFiles");
-            string appExe = Path.Combine(appDir, "ForzaMusicOverlayApp.exe");
+            string appExe = Path.Combine(appDir, "GamingMusicOverlayApp.exe");
 
             if (!File.Exists(appExe))
             {
                 MessageBox.Show(
-                    "找不到 AppFiles\\ForzaMusicOverlayApp.exe，請重新解壓縮完整 release 套件。\n\nAppFiles\\ForzaMusicOverlayApp.exe was not found. Please extract the full release package again.",
-                    "Forza Music",
+                    "找不到 AppFiles\\GamingMusicOverlayApp.exe，請重新解壓縮完整 release 套件。\n\nAppFiles\\GamingMusicOverlayApp.exe was not found. Please extract the full release package again.",
+                    "Gaming Music",
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Error);
                 return 1;
@@ -37,7 +37,7 @@ internal static class Program
         }
         catch (Exception ex)
         {
-            MessageBox.Show(ex.Message, "Forza Music", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            MessageBox.Show(ex.Message, "Gaming Music", MessageBoxButtons.OK, MessageBoxIcon.Error);
             return 1;
         }
     }
@@ -57,3 +57,4 @@ internal static class Program
         return "\"" + value.Replace("\\", "\\\\").Replace("\"", "\\\"") + "\"";
     }
 }
+

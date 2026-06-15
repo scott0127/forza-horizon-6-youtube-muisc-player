@@ -11,17 +11,22 @@ import json
 import os
 from pathlib import Path
 import queue
-import socket
-import struct
 import sys
 import threading
 import time
-import tkinter as tk
 import warnings
 from dataclasses import dataclass
-from tkinter import messagebox
 import webbrowser
-import asyncio
+
+try:
+    import tkinter as tk
+    from tkinter import messagebox
+except Exception as exc:
+    tk = None
+    messagebox = None
+    TK_IMPORT_ERROR = exc
+else:
+    TK_IMPORT_ERROR = None
 
 try:
     from pycaw.pycaw import AudioUtilities, ISimpleAudioVolume
@@ -78,6 +83,10 @@ def handle_volume_command(command: str, track_info) -> None:
             except Exception:
                 pass
 
+        # App-only mode must never silently fall back to Windows master volume.
+        # Browser session lookup can temporarily fail while tracks change.
+        return
+
     vk = Win32.VK_VOLUME_UP if command == "volume_up" else Win32.VK_VOLUME_DOWN
     try:
         send_media_key(vk)
@@ -88,32 +97,116 @@ os.environ.setdefault("PYGAME_HIDE_SUPPORT_PROMPT", "1")
 warnings.filterwarnings("ignore", category=UserWarning)
 
 try:
-    from PIL import Image, ImageDraw, ImageTk
+    from PIL import Image, ImageDraw
 except Exception as exc:  # pragma: no cover - shown in GUI at runtime
     Image = None
     ImageDraw = None
-    ImageTk = None
     PIL_IMPORT_ERROR = exc
 else:
     PIL_IMPORT_ERROR = None
 
+try:
+    from PIL import ImageTk
+except Exception as exc:  # pragma: no cover - only required by the legacy Tk GUI
+    ImageTk = None
+    IMAGETK_IMPORT_ERROR = exc
+else:
+    IMAGETK_IMPORT_ERROR = None
 
-APP_TITLE = "Forza 音樂懸浮播放器"
-APP_VERSION = "3.5.0"
+
+APP_TITLE = "Gaming Music Overlay"
+APP_VERSION = "4.1.0"
 YOUTUBE_MUSIC_URL = "https://music.youtube.com"
 SPOTIFY_URL = "https://open.spotify.com"
 APPLE_MUSIC_URL = "https://music.apple.com"
-SUPPORTED_MUSIC_LABEL = "YouTube Music / Spotify / Apple Music"
+KKBOX_URL = "https://play.kkbox.com/discover/featured"
+SUPPORTED_MUSIC_LABEL = "YouTube Music / Spotify / Apple Music / KKBOX"
 APP_DIR = Path(__file__).resolve().parent
-APP_DATA_DIR = Path(os.environ.get("LOCALAPPDATA", str(APP_DIR))) / "ForzaMusicOverlay"
+APP_DATA_DIR = Path(os.environ.get("LOCALAPPDATA", str(APP_DIR))) / "GamingMusicOverlay"
 SETTINGS_PATH = APP_DATA_DIR / "settings.json"
+DEFAULT_GAMEPAD_BINDINGS = {
+    "play_pause": "A",
+    "next_track": "B",
+    "previous_track": "X",
+    "volume_up": "DPAD_RIGHT",
+    "volume_down": "DPAD_LEFT",
+}
+GAMEPAD_ACTION_NAMES = tuple(DEFAULT_GAMEPAD_BINDINGS)
+GAMEPAD_ACTION_BUTTONS = (
+    "A",
+    "B",
+    "X",
+    "Y",
+    "LB",
+    "RB",
+    "R3",
+    "DPAD_UP",
+    "DPAD_DOWN",
+    "DPAD_LEFT",
+    "DPAD_RIGHT",
+    "LT",
+    "RT",
+    "LS_UP",
+    "LS_DOWN",
+    "LS_LEFT",
+    "LS_RIGHT",
+    "RS_UP",
+    "RS_DOWN",
+    "RS_LEFT",
+    "RS_RIGHT",
+)
+_GAMEPAD_BINDINGS_LOCK = threading.Lock()
+_RUNTIME_GAMEPAD_BINDINGS = DEFAULT_GAMEPAD_BINDINGS.copy()
+_GAMEPAD_PROFILE_OVERRIDES_LOCK = threading.Lock()
+_RUNTIME_GAMEPAD_PROFILE_OVERRIDES: dict[str, str] = {}
 DEFAULT_SETTINGS = {
     "overlay_x": 24,
     "overlay_y": 24,
     "music_service": "youtube",
     "volume_mode": "app",
     "show_lyrics": False,
+    "gamepad_bindings": DEFAULT_GAMEPAD_BINDINGS.copy(),
+    "gamepad_profile_overrides": {},
 }
+
+
+def set_runtime_gamepad_bindings(bindings: dict[str, str]) -> None:
+    global _RUNTIME_GAMEPAD_BINDINGS
+    with _GAMEPAD_BINDINGS_LOCK:
+        _RUNTIME_GAMEPAD_BINDINGS = bindings.copy()
+
+
+def get_runtime_gamepad_bindings() -> dict[str, str]:
+    with _GAMEPAD_BINDINGS_LOCK:
+        return _RUNTIME_GAMEPAD_BINDINGS.copy()
+
+
+def normalize_gamepad_device_key(value: object) -> str:
+    return " ".join(str(value or "").strip().lower().split())
+
+
+def normalize_gamepad_profile_overrides(value: object) -> dict[str, str]:
+    if not isinstance(value, dict):
+        return {}
+
+    overrides: dict[str, str] = {}
+    for device_key, profile_kind in value.items():
+        normalized_key = normalize_gamepad_device_key(device_key)
+        normalized_profile = str(profile_kind).strip().lower()
+        if normalized_key and normalized_profile in ("xbox", "playstation"):
+            overrides[normalized_key] = normalized_profile
+    return overrides
+
+
+def set_runtime_gamepad_profile_overrides(overrides: dict[str, str]) -> None:
+    global _RUNTIME_GAMEPAD_PROFILE_OVERRIDES
+    with _GAMEPAD_PROFILE_OVERRIDES_LOCK:
+        _RUNTIME_GAMEPAD_PROFILE_OVERRIDES = overrides.copy()
+
+
+def get_runtime_gamepad_profile_overrides() -> dict[str, str]:
+    with _GAMEPAD_PROFILE_OVERRIDES_LOCK:
+        return _RUNTIME_GAMEPAD_PROFILE_OVERRIDES.copy()
 
 MUSIC_SERVICES = {
     "youtube": {
@@ -133,6 +226,12 @@ MUSIC_SERVICES = {
         "overlay": "APPLE MUSIC",
         "accent": "#111111",
         "url": APPLE_MUSIC_URL,
+    },
+    "kkbox": {
+        "display": "KKBOX",
+        "overlay": "KKBOX",
+        "accent": "#39c5ff",
+        "url": KKBOX_URL,
     },
 }
 
@@ -265,7 +364,7 @@ def send_media_key(virtual_key: int) -> None:
 
 
 def acquire_single_instance_mutex() -> wintypes.HANDLE | None:
-    handle = Win32.kernel32.CreateMutexW(None, True, "Global\\ForzaMusicOverlayPython")
+    handle = Win32.kernel32.CreateMutexW(None, True, "Global\\GamingMusicOverlayPython")
     if not handle:
         return None
     if ctypes.get_last_error() == Win32.ERROR_ALREADY_EXISTS:
@@ -412,7 +511,7 @@ def is_probably_browser_app_icon(track: TrackInfo, artwork_bytes: bytes) -> bool
 def clean_and_convert_lrc(lrc_text: str) -> str:
     if not lrc_text:
         return ""
-    
+
     try:
         import opencc
         # s2twp: 簡體到繁體（台灣標準）並轉換詞彙
@@ -425,24 +524,24 @@ def clean_and_convert_lrc(lrc_text: str) -> str:
     zh_meta = r'(?:[词詞曲]|作[词詞曲]|編?[编編]曲|製?制作人|製作人|混音|後期|和[声聲]|原唱|翻唱|錄?录音|錄音|吉他|貝?贝斯|貝斯|弦[乐樂]|發?发行|發行|出品人?|企[划劃]|提供|qq|网易|網易)\s*[:：/|、\s]'
     # 常用來標示 metadata 的英文關鍵字
     en_meta = r'(?:vocal|guitar|bass|drum|producer|arranger|lrc|lyric|words|music)\s*(?:[:：/|、]|by\s)'
-    
+
     meta_regex = re.compile(rf'^({zh_meta}|{en_meta})\s*.*$', re.IGNORECASE)
     time_pattern = re.compile(r'^(\[\d{2,}:\d{2}(?:\.\d{2,3})?\])\s*(.*)')
-    
+
     lines = lrc_text.splitlines()
     processed = []
-    
+
     for line in lines:
         match = time_pattern.match(line)
         if match:
             timestamp = match.group(1)
             text = match.group(2).strip()
-            
+
             # 過濾純音樂/間奏的標記
             if text.lower() in ["純音樂", "纯音乐", "間奏", "间奏", "music", "intro", "instrumental"]:
                 processed.append(f"{timestamp} ")
                 continue
-            
+
             # 過濾作詞作曲等 Metadata 資訊 (只過濾長度小於 35 的句子)
             if meta_regex.match(text) and len(text) < 35:
                 # 保留時間軸，但清空歌詞，讓畫面上不會顯示無關資訊
@@ -455,13 +554,14 @@ def clean_and_convert_lrc(lrc_text: str) -> str:
             if converter:
                 line = converter.convert(line)
             processed.append(line)
-            
+
     return "\n".join(processed)
+
 
 def fetch_lyrics_sync(title: str, artist: str) -> str:
     if not title:
         return ""
-        
+
     t_lower = title.lower().strip()
     a_lower = (artist or "").lower().strip()
     ad_titles = ['廣告', 'advertisement', 'spotify', 'spotify free']
@@ -474,7 +574,7 @@ def fetch_lyrics_sync(title: str, artist: str) -> str:
         import io
 
         search_term = f"{title} {artist}".strip()
-        
+
         # 關閉套件本身的日誌警告
         logger = logging.getLogger("syncedlyrics")
         logger.setLevel(logging.CRITICAL)
@@ -493,7 +593,7 @@ def fetch_lyrics_sync(title: str, artist: str) -> str:
             lrc = syncedlyrics.search(search_term, providers=tier, enhanced=True)
             if lrc:
                 return clean_and_convert_lrc(lrc)
-        
+
         return ""
     except Exception:
         return ""
@@ -637,136 +737,16 @@ class HotkeyThread(threading.Thread):
             Win32.user32.UnregisterHotKey(None, hotkey_id)
 
 
-class TelemetryThread(threading.Thread):
-    def __init__(self, output: queue.Queue, stop_event: threading.Event):
-        super().__init__(daemon=True)
-        self.output = output
-        self.stop_event = stop_event
-        self.port = 501
-        self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        self.sock.settimeout(0.5)
-        try:
-            self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        except Exception:
-            pass
-        try:
-            self.sock.bind(('127.0.0.1', self.port))
-            print(f"[Telemetry] Bound to UDP {self.port}", file=sys.stderr)
-        except Exception as e:
-            print(f"[Telemetry] UDP bind error: {e}", file=sys.stderr)
-            self.sock = None
-
-    def run(self):
-        if not self.sock:
-            return
-
-        last_update_time = 0
-        
-        while not self.stop_event.is_set():
-            try:
-                data, addr = self.sock.recvfrom(1024)
-                if len(data) >= 44:
-                    # Forza UDP packet (works for 232, 311, or 324 bytes)
-                    is_race_on = struct.unpack_from('<i', data, 0)[0]
-                    engine_max_rpm = struct.unpack_from('<f', data, 8)[0]
-                    current_engine_rpm = struct.unpack_from('<f', data, 16)[0]
-                    
-                    vx = struct.unpack_from('<f', data, 32)[0]
-                    vy = struct.unpack_from('<f', data, 36)[0]
-                    vz = struct.unpack_from('<f', data, 40)[0]
-                    
-                    import math
-                    speed_kph = math.sqrt(vx**2 + vy**2 + vz**2) * 3.6
-                    
-                    # Extract Gear depending on Forza version packet format
-                    gear = 11  # Default to Neutral
-                    has_dash = False
-                    gear_offset = 319  # Default to Horizon (FH4/FH5/FH6)
-                    
-                    if len(data) >= 324:
-                        # Forza Horizon 4/5/6 and FM8 use 324+ bytes, Gear is at 319
-                        has_dash = True
-                        gear_offset = 319
-                    elif len(data) >= 311:
-                        # Forza Motorsport 7 uses 311 bytes, Gear is at 307
-                        has_dash = True
-                        gear_offset = 307
-                        
-                    if has_dash and any(b != 0 for b in data[232:250]):
-                        try:
-                            gear = struct.unpack_from('<B', data, gear_offset)[0]
-                        except Exception:
-                            pass
-                    else:
-                        # Forza 6 Sled Fallback: Calculate gear from RPM / Speed ratio!
-                        if vz < -0.5:  # Moving backward
-                            gear = 0   # Reverse
-                        elif speed_kph < 3.0:
-                            gear = 11  # Neutral
-                        else:
-                            ratio = current_engine_rpm / speed_kph
-                            if ratio >= 135.0:
-                                gear = 1
-                            elif ratio >= 88.0:
-                                gear = 2
-                            elif ratio >= 60.0:
-                                gear = 3
-                            elif ratio >= 43.0:
-                                gear = 4
-                            elif ratio >= 31.0:
-                                gear = 5
-                            elif ratio >= 23.0:
-                                gear = 6
-                            elif ratio >= 16.0:
-                                gear = 7
-                            else:
-                                gear = 8
-                    
-                    # Downsample UI updates to 20Hz (every 50ms)
-                    now = time.time()
-                    if now - last_update_time >= 0.05:
-                        self.output.put(("telemetry_data", {
-                            "rpm": current_engine_rpm,
-                            "max_rpm": engine_max_rpm,
-                            "speed": speed_kph,
-                            "gear": gear
-                        }))
-                        last_update_time = now
-
-            except socket.timeout:
-                pass
-            except Exception as e:
-                print(f"[Telemetry Error] {e}", file=sys.stderr)
-                time.sleep(1)
-        
-        if self.sock:
-            self.sock.close()
-
-
 class GamepadThread(threading.Thread):
     # L3（左搖桿按下）作為修飾鍵，避免與 Forza 的 LB（離合器）衝突。
-    # Xbox: L3 = 按鈕索引 8, PlayStation: L3 = 按鈕索引 10 或 11。
-    L3_BUTTONS = (8, 10, 11)
-
-    BUTTON_COMBOS = (
-        ("L3 + A", L3_BUTTONS, 0, Win32.VK_MEDIA_PLAY_PAUSE),
-        ("L3 + B", L3_BUTTONS, 1, Win32.VK_MEDIA_NEXT_TRACK),
-        ("L3 + X", L3_BUTTONS, 2, Win32.VK_MEDIA_PREV_TRACK),
-    )
-    HAT_COMBOS = (
-        ("L3 + 右鍵", L3_BUTTONS, (1, 0), Win32.VK_VOLUME_UP),
-        ("L3 + 左鍵", L3_BUTTONS, (-1, 0), Win32.VK_VOLUME_DOWN),
-    )
-    # PlayStation 手把的 D-Pad 通常映射為按鈕而非 hat，
-    # 以下為常見的 DualSense / DualShock 4 D-Pad 按鈕索引。
-    # 注意：僅在 hat_count == 0 時使用此 fallback，
-    # 避免與 L3 的 PS 索引 (11) 衝突。
-    PS_DPAD_BUTTONS: dict[tuple[int, int], tuple[int, ...]] = {
-        (0, 1): (11,),    # 上
-        (0, -1): (12,),   # 下
-        (-1, 0): (13,),   # 左
-        (1, 0): (14,),    # 右
+    ACTION_COMMANDS = {
+        "play_pause": Win32.VK_MEDIA_PLAY_PAUSE,
+        "next_track": Win32.VK_MEDIA_NEXT_TRACK,
+        "previous_track": Win32.VK_MEDIA_PREV_TRACK,
+        "volume_up": "volume_up",
+        "volume_down": "volume_down",
     }
+    FACE_BUTTONS = {"A": 0, "B": 1, "X": 2, "Y": 3, "LB": 4, "RB": 5}
 
     def __init__(self, output: queue.Queue, stop_event: threading.Event):
         super().__init__(daemon=True)
@@ -783,8 +763,10 @@ class GamepadThread(threading.Thread):
         pressed_combos: set[tuple[int, str]] = set()
         joysticks = []
         joystick_profiles = {}
+        prompted_profile_keys: set[str] = set()
         last_count = -1
         last_pressed_inputs: set = set()
+        axis_baselines: dict[int, tuple[float, ...]] = {}
         consecutive_errors = 0
         MAX_CONSECUTIVE_ERRORS = 8
 
@@ -800,45 +782,27 @@ class GamepadThread(threading.Thread):
                     if count != last_count:
                         joysticks = []
                         joystick_profiles = {}
+                        axis_baselines = {}
                         for index in range(count):
                             joystick = pygame.joystick.Joystick(index)
                             joystick.init()
                             joysticks.append(joystick)
+                            axis_baselines[index] = tuple(
+                                joystick.get_axis(axis_index)
+                                for axis_index in range(joystick.get_numaxes())
+                            )
                             
-                            # Detect controller type by device name
-                            name = joystick.get_name().lower()
-                            is_ps = any(x in name for x in ("playstation", "dualshock", "dualsense", "wireless controller", "sony", "ps5", "ps4"))
-                            is_switch = any(x in name for x in ("switch", "nintendo"))
-                            
-                            if is_ps:
-                                if name == "ps4 controller":
-                                    profile = {
-                                        "type": "PlayStation (Virtual)",
-                                        "l3_buttons": (7, 10, 11),
-                                        "dpad_up": 11,
-                                        "dpad_down": 12,
-                                    }
-                                else:
-                                    profile = {
-                                        "type": "PlayStation",
-                                        "l3_buttons": (7, 10, 11),  # 7 for SDL standard, 10/11 for raw Bluetooth
-                                        "dpad_up": 11,
-                                        "dpad_down": 12,
-                                    }
-                            elif is_switch:
-                                profile = {
-                                    "type": "Nintendo Switch",
-                                    "l3_buttons": (7, 10, 11),
-                                    "dpad_up": 11,
-                                    "dpad_down": 12,
-                                }
-                            else:
-                                profile = {
-                                    "type": "Xbox",
-                                    "l3_buttons": (7, 8, 9),  # 7 for SDL standard, 8 for XInput raw, 9 for older drivers
-                                    "dpad_up": 11,
-                                    "dpad_down": 12,
-                                }
+                            name = joystick.get_name()
+                            device_key = normalize_gamepad_device_key(name)
+                            profile = resolve_gamepad_profile(name, get_runtime_gamepad_profile_overrides())
+                            if profile is None and device_key not in prompted_profile_keys:
+                                prompted_profile_keys.add(device_key)
+                                self.output.put(
+                                    (
+                                        "gamepad_profile_required",
+                                        {"deviceKey": device_key, "deviceName": name},
+                                    )
+                                )
                             joystick_profiles[index] = profile
 
                         if count:
@@ -847,7 +811,8 @@ class GamepadThread(threading.Thread):
                                 name = joystick.get_name()
                                 n_buttons = joystick.get_numbuttons()
                                 n_hats = joystick.get_numhats()
-                                p_type = joystick_profiles.get(idx, {}).get("type", "Unknown")
+                                profile = joystick_profiles.get(idx)
+                                p_type = profile.get("type", "Unknown") if profile else "需要選擇類型"
                                 info_parts.append(f"{name} [{p_type}] (按鈕:{n_buttons} hat:{n_hats})")
                             self.output.put(("gamepad_status", f"手把控制已啟用：{', '.join(info_parts)}"))
                         else:
@@ -856,7 +821,10 @@ class GamepadThread(threading.Thread):
                         last_count = count
                         pressed_combos.clear()
 
-                    pressed_this_tick: set = set()
+                    pressed_this_tick: set[str] = set()
+                    bindings = get_runtime_gamepad_bindings()
+                    profile_overrides = get_runtime_gamepad_profile_overrides()
+
                     for joy_index, joystick in enumerate(joysticks):
                         try:
                             button_count = joystick.get_numbuttons()
@@ -864,118 +832,115 @@ class GamepadThread(threading.Thread):
                         except Exception:
                             continue
 
-                        profile = joystick_profiles.get(joy_index, {
-                            "type": "Xbox",
-                            "l3_buttons": (8, 10, 11),
-                            "dpad_up": 11,
-                            "dpad_down": 12,
-                        })
+                        profile = joystick_profiles.get(joy_index)
+                        if profile is None:
+                            profile = resolve_gamepad_profile(joystick.get_name(), profile_overrides)
+                            if profile is None:
+                                continue
+                            joystick_profiles[joy_index] = profile
+                            self.output.put(
+                                (
+                                    "gamepad_status",
+                                    f"手把類型已套用：{joystick.get_name()} [{profile['type']}]",
+                                )
+                            )
                         l3_buttons = profile["l3_buttons"]
+                        r3_buttons = profile["r3_buttons"]
+                        joy_pressed_inputs: set[str] = set()
 
                         # 1. 偵測 L3
                         for btn in l3_buttons:
                             if btn < button_count and joystick.get_button(btn):
-                                pressed_this_tick.add("L3")
+                                joy_pressed_inputs.add("L3")
                                 break
 
-                        # 2. 偵測 A
-                        if 0 < button_count and joystick.get_button(0):
-                            pressed_this_tick.add("A")
+                        # 2. 偵測一般按鍵與 R3。
+                        for button_name, button_index in self.FACE_BUTTONS.items():
+                            if button_index < button_count and joystick.get_button(button_index):
+                                joy_pressed_inputs.add(button_name)
+                        if any(btn < button_count and joystick.get_button(btn) for btn in r3_buttons):
+                            joy_pressed_inputs.add("R3")
 
-                        # 3. 偵測 B
-                        if 1 < button_count and joystick.get_button(1):
-                            pressed_this_tick.add("B")
-
-                        # 4. 偵測 X
-                        if 2 < button_count and joystick.get_button(2):
-                            pressed_this_tick.add("X")
-
-                        # 5. 偵測 UP
-                        is_up = False
-                        for hat_index in range(hat_count):
-                            if joystick.get_hat(hat_index)[1] == 1:
-                                is_up = True
-                                break
-                        if not is_up and hat_count == 0:
-                            dpad_up_btn = profile["dpad_up"]
-                            if dpad_up_btn < button_count and joystick.get_button(dpad_up_btn):
-                                is_up = True
-                        if is_up:
-                            pressed_this_tick.add("UP")
-
-                        # 6. 偵測 DOWN
-                        is_down = False
-                        for hat_index in range(hat_count):
-                            if joystick.get_hat(hat_index)[1] == -1:
-                                is_down = True
-                                break
-                        if not is_down and hat_count == 0:
-                            dpad_down_btn = profile["dpad_down"]
-                            if dpad_down_btn < button_count and joystick.get_button(dpad_down_btn):
-                                is_down = True
-                        if is_down:
-                            pressed_this_tick.add("DOWN")
-
-                        for label, _, action_button, media_key in self.BUTTON_COMBOS:
-                            combo_id = (joy_index, label)
-                            modifier_pressed = any(
-                                btn < button_count and joystick.get_button(btn)
-                                for btn in l3_buttons
-                            )
-                            is_pressed = (
-                                modifier_pressed
-                                and action_button < button_count
-                                and joystick.get_button(action_button)
-                            )
-
-                            if is_pressed and combo_id not in pressed_combos:
-                                pressed_combos.add(combo_id)
-                                if media_key in (Win32.VK_VOLUME_UP, Win32.VK_VOLUME_DOWN):
-                                    cmd = "volume_up" if media_key == Win32.VK_VOLUME_UP else "volume_down"
-                                    self.output.put(("command", cmd))
-                                else:
-                                    try:
-                                        send_media_key(media_key)
-                                    except Exception:
-                                        pass
-                            elif not is_pressed and combo_id in pressed_combos:
-                                pressed_combos.discard(combo_id)
-
-                        for label, _, hat_value, media_key in self.HAT_COMBOS:
-                            combo_id = (joy_index, label)
-                            modifier_pressed = any(
-                                btn < button_count and joystick.get_button(btn)
-                                for btn in l3_buttons
-                            )
-
-                            # Xbox 風格：D-Pad 透過 hat 報告
-                            is_hat_pressed = any(
-                                joystick.get_hat(hat_index) == hat_value
-                                for hat_index in range(hat_count)
-                            )
-
-                            # PS 風格：D-Pad 透過 button 報告（fallback）
-                            # 僅在 hat_count == 0 時啟用，避免與 L3 索引 (11) 衝突
-                            is_dpad_button_pressed = False
-                            if hat_count == 0:
-                                is_dpad_button_pressed = any(
+                        # 3. 偵測 D-Pad。Xbox 通常使用 hat；PlayStation raw
+                        # input 沒有 hat 時才使用 profile fallback，避免索引碰撞。
+                        hats = [joystick.get_hat(hat_index) for hat_index in range(hat_count)]
+                        dpad_checks = {
+                            "DPAD_UP": any(hat_y == 1 for _, hat_y in hats),
+                            "DPAD_DOWN": any(hat_y == -1 for _, hat_y in hats),
+                            "DPAD_LEFT": any(hat_x == -1 for hat_x, _ in hats),
+                            "DPAD_RIGHT": any(hat_x == 1 for hat_x, _ in hats),
+                        }
+                        if hat_count == 0:
+                            for button_name, button_indexes in profile["dpad_buttons"].items():
+                                dpad_checks[button_name] = any(
                                     btn < button_count and joystick.get_button(btn)
-                                    for btn in self.PS_DPAD_BUTTONS.get(hat_value, ())
+                                    for btn in button_indexes
                                 )
+                        for button_name, is_pressed in dpad_checks.items():
+                            if is_pressed:
+                                joy_pressed_inputs.add(button_name)
 
-                            is_pressed = (
-                                modifier_pressed
-                                and (is_hat_pressed or is_dpad_button_pressed)
-                            )
+                        # 4. 將 trigger 與搖桿 axis 轉成可自訂的語意輸入。
+                        # Trigger 的靜止值依驅動不同可能是 0 或 -1，因此比較連線時基準值。
+                        axis_count = joystick.get_numaxes()
+                        axis_values = tuple(joystick.get_axis(axis_index) for axis_index in range(axis_count))
+                        baseline_values = axis_baselines.get(joy_index, ())
+                        axes = profile.get("axes", {})
+
+                        def axis_value(axis_name: str) -> float:
+                            axis_index = axes.get(axis_name)
+                            if not isinstance(axis_index, int) or axis_index < 0 or axis_index >= axis_count:
+                                return 0.0
+                            return axis_values[axis_index]
+
+                        def trigger_pressed(axis_name: str) -> bool:
+                            axis_index = axes.get(axis_name)
+                            if not isinstance(axis_index, int) or axis_index < 0 or axis_index >= axis_count:
+                                return False
+                            baseline = baseline_values[axis_index] if axis_index < len(baseline_values) else 0.0
+                            return abs(axis_values[axis_index] - baseline) >= 0.55
+
+                        if trigger_pressed("LT"):
+                            joy_pressed_inputs.add("LT")
+                        if trigger_pressed("RT"):
+                            joy_pressed_inputs.add("RT")
+
+                        ls_x = axis_value("LS_X")
+                        ls_y = axis_value("LS_Y")
+                        rs_x = axis_value("RS_X")
+                        rs_y = axis_value("RS_Y")
+                        if ls_x <= -0.72:
+                            joy_pressed_inputs.add("LS_LEFT")
+                        elif ls_x >= 0.72:
+                            joy_pressed_inputs.add("LS_RIGHT")
+                        if ls_y <= -0.72:
+                            joy_pressed_inputs.add("LS_UP")
+                        elif ls_y >= 0.72:
+                            joy_pressed_inputs.add("LS_DOWN")
+                        if rs_x <= -0.72:
+                            joy_pressed_inputs.add("RS_LEFT")
+                        elif rs_x >= 0.72:
+                            joy_pressed_inputs.add("RS_RIGHT")
+                        if rs_y <= -0.72:
+                            joy_pressed_inputs.add("RS_UP")
+                        elif rs_y >= 0.72:
+                            joy_pressed_inputs.add("RS_DOWN")
+
+                        pressed_this_tick.update(joy_pressed_inputs)
+
+                        # 5. 每個組合鍵只在按下邊緣觸發一次，長按不會連續改音量。
+                        for action_name, button_name in bindings.items():
+                            combo_id = (joy_index, action_name)
+                            is_pressed = "L3" in joy_pressed_inputs and button_name in joy_pressed_inputs
 
                             if is_pressed and combo_id not in pressed_combos:
                                 pressed_combos.add(combo_id)
-                                if media_key in (Win32.VK_VOLUME_UP, Win32.VK_VOLUME_DOWN):
-                                    cmd = "volume_up" if media_key == Win32.VK_VOLUME_UP else "volume_down"
-                                    self.output.put(("command", cmd))
+                                action_command = self.ACTION_COMMANDS[action_name]
+                                if isinstance(action_command, str):
+                                    self.output.put(("command", action_command))
                                 else:
                                     try:
-                                        send_media_key(media_key)
+                                        send_media_key(action_command)
                                     except Exception:
                                         pass
                             elif not is_pressed and combo_id in pressed_combos:
@@ -998,6 +963,7 @@ class GamepadThread(threading.Thread):
                             pass
                         joysticks = []
                         last_count = -1
+                        axis_baselines = {}
                         pressed_combos.clear()
                         consecutive_errors = 0
 
@@ -1062,6 +1028,9 @@ def get_track_source_theme(track: TrackInfo, preferred_service: str | None = Non
     if "apple" in app_id:
         return "apple", "APPLE MUSIC", MUSIC_SERVICES["apple"]["accent"]
 
+    if "kkbox" in app_id:
+        return "kkbox", "KKBOX", MUSIC_SERVICES["kkbox"]["accent"]
+
     if "youtube" in app_id:
         return "youtube", "YOUTUBE MUSIC", MUSIC_SERVICES["youtube"]["accent"]
 
@@ -1091,6 +1060,14 @@ def get_track_source_theme(track: TrackInfo, preferred_service: str | None = Non
             or "apple" in artist_lower
         ):
             return "apple", "APPLE MUSIC", MUSIC_SERVICES["apple"]["accent"]
+
+        # KKBOX heuristics
+        if (
+            "kkbox" in title_lower
+            or "kkbox" in album_lower
+            or "kkbox" in artist_lower
+        ):
+            return "kkbox", "KKBOX", MUSIC_SERVICES["kkbox"]["accent"]
 
         # Fallback to manually selected preferred service if browser media matches no keywords
         service_key = normalize_music_service(preferred_service)
@@ -1154,20 +1131,119 @@ def track_to_payload(track: TrackInfo, preferred_service: str | None = None) -> 
     }
 
 
+def validate_gamepad_bindings(value: object) -> tuple[dict[str, str] | None, str | None]:
+    if not isinstance(value, dict):
+        return None, "手把快捷鍵格式不正確"
+
+    bindings: dict[str, str] = {}
+    assigned_buttons: set[str] = set()
+    for action_name in GAMEPAD_ACTION_NAMES:
+        button_name = str(value.get(action_name, "")).upper()
+        if button_name not in GAMEPAD_ACTION_BUTTONS:
+            return None, f"{action_name} 不是可用的 L3 組合鍵"
+        if button_name in assigned_buttons:
+            return None, f"L3 + {button_name} 已經被其他功能使用"
+        bindings[action_name] = button_name
+        assigned_buttons.add(button_name)
+
+    return bindings, None
+
+
+def normalize_gamepad_bindings(value: object) -> dict[str, str]:
+    candidate = DEFAULT_GAMEPAD_BINDINGS.copy()
+    if isinstance(value, dict):
+        for action_name in GAMEPAD_ACTION_NAMES:
+            button_name = str(value.get(action_name, candidate[action_name])).upper()
+            if button_name in GAMEPAD_ACTION_BUTTONS:
+                candidate[action_name] = button_name
+
+    bindings, error = validate_gamepad_bindings(candidate)
+    if error or bindings is None:
+        return DEFAULT_GAMEPAD_BINDINGS.copy()
+    return bindings
+
+
+def make_gamepad_profile(profile_kind: str) -> dict:
+    if profile_kind == "playstation":
+        return {
+            "type": "PlayStation",
+            "kind": "playstation",
+            "l3_buttons": (7, 10),
+            "r3_buttons": (8,),
+            "dpad_buttons": {
+                "DPAD_UP": (11,),
+                "DPAD_DOWN": (12,),
+                "DPAD_LEFT": (13,),
+                "DPAD_RIGHT": (14,),
+            },
+            "axes": {
+                "LS_X": 0,
+                "LS_Y": 1,
+                "RS_X": 2,
+                "RS_Y": 3,
+                "LT": 4,
+                "RT": 5,
+            },
+        }
+
+    return {
+        "type": "Xbox",
+        "kind": "xbox",
+        "l3_buttons": (8,),
+        "r3_buttons": (9,),
+        "dpad_buttons": {},
+        "axes": {
+            "LS_X": 0,
+            "LS_Y": 1,
+            "RS_X": 2,
+            "RS_Y": 3,
+            "LT": 4,
+            "RT": 5,
+        },
+    }
+
+
+def resolve_gamepad_profile(device_name: str, overrides: dict[str, str]) -> dict | None:
+    device_key = normalize_gamepad_device_key(device_name)
+    overridden_profile = overrides.get(device_key)
+    if overridden_profile:
+        return make_gamepad_profile(overridden_profile)
+
+    official_ps_markers = ("dualsense", "dualshock", "playstation", "sony interactive")
+    official_xbox_markers = ("xbox", "xinput", "x-box")
+    if any(marker in device_key for marker in official_ps_markers):
+        return make_gamepad_profile("playstation")
+    if any(marker in device_key for marker in official_xbox_markers):
+        return make_gamepad_profile("xbox")
+
+    return None
+
+
 def load_settings() -> dict:
-    settings = DEFAULT_SETTINGS.copy()
+    settings = {
+        **DEFAULT_SETTINGS,
+        "gamepad_bindings": DEFAULT_GAMEPAD_BINDINGS.copy(),
+    }
     if not SETTINGS_PATH.exists():
+        set_runtime_gamepad_bindings(settings["gamepad_bindings"])
+        set_runtime_gamepad_profile_overrides(settings["gamepad_profile_overrides"])
         return settings
 
     try:
         loaded = json.loads(SETTINGS_PATH.read_text(encoding="utf-8"))
     except Exception:
+        set_runtime_gamepad_bindings(settings["gamepad_bindings"])
+        set_runtime_gamepad_profile_overrides(settings["gamepad_profile_overrides"])
         return settings
 
     for key, value in loaded.items():
         if key in settings:
             settings[key] = value
 
+    settings["gamepad_bindings"] = normalize_gamepad_bindings(settings.get("gamepad_bindings"))
+    settings["gamepad_profile_overrides"] = normalize_gamepad_profile_overrides(settings.get("gamepad_profile_overrides"))
+    set_runtime_gamepad_bindings(settings["gamepad_bindings"])
+    set_runtime_gamepad_profile_overrides(settings["gamepad_profile_overrides"])
     return settings
 
 
@@ -1194,9 +1270,10 @@ def looks_like_supported_music(track: TrackInfo) -> bool:
     app_id = (track.app_id or "").lower()
     spotify_source = "spotify" in app_id
     apple_source = "apple" in app_id
-    browser_source = any(source in app_id for source in ("chrome", "edge", "firefox", "opera", "brave", "vivaldi", "browser", "youtube", "apple"))
+    kkbox_source = "kkbox" in app_id
+    browser_source = any(source in app_id for source in ("chrome", "edge", "firefox", "opera", "brave", "vivaldi", "browser", "youtube", "apple", "kkbox"))
     has_media_metadata = bool(track.title and (track.artist or track.duration_seconds > 0))
-    return (spotify_source or apple_source or browser_source) and has_media_metadata
+    return (spotify_source or apple_source or kkbox_source or browser_source) and has_media_metadata
 
 class OverlayUI:
     WIDTH = 450
@@ -1221,7 +1298,6 @@ class OverlayUI:
         self.worker_thread: threading.Thread | None = None
         self.hotkey_thread: HotkeyThread | None = None
         self.gamepad_thread: GamepadThread | None = None
-        self.telemetry_thread: TelemetryThread | None = None
         self.setup_window: tk.Toplevel | None = None
         self.setup_status_var: tk.StringVar | None = None
         self.service_text: tk.StringVar | None = None
@@ -1384,7 +1460,7 @@ class OverlayUI:
         service_section = make_section("1. 選擇音樂來源", "#ff2d55")
         tk.Label(
             service_section,
-            text="按哪個服務，就會開啟對應網站，並自動套用紅色、綠色或黑色主題。",
+            text="按哪個服務，就會開啟對應網站，並自動套用紅色、綠色、黑色或天空藍主題。",
             font=body_font,
             fg=muted,
             bg=panel_bg,
@@ -1421,10 +1497,20 @@ class OverlayUI:
             fg="#ffffff",
             active_bg="#2a2a2a",
             height=2,
-        ).grid(row=0, column=2, sticky="nsew", padx=(7, 0), ipady=2)
+        ).grid(row=0, column=2, sticky="nsew", padx=7, ipady=2)
+        make_button(
+            service_buttons,
+            "開啟 KKBOX",
+            self.open_kkbox,
+            bg="#39c5ff",
+            fg="#061827",
+            active_bg="#21a9df",
+            height=2,
+        ).grid(row=0, column=3, sticky="nsew", padx=(7, 0), ipady=2)
         service_buttons.columnconfigure(0, weight=1, uniform="service")
         service_buttons.columnconfigure(1, weight=1, uniform="service")
         service_buttons.columnconfigure(2, weight=1, uniform="service")
+        service_buttons.columnconfigure(3, weight=1, uniform="service")
         service_buttons.rowconfigure(0, weight=1)
 
         self.service_text = tk.StringVar(value=self.get_music_service_status())
@@ -1515,11 +1601,12 @@ class OverlayUI:
             "Ctrl+Alt+P        調整懸浮播放器位置\n"
             "Ctrl+Alt+Q        退出程式\n\n"
             "手把組合鍵（L3 = 左搖桿按下）\n"
-            "L3 + A            播放 / 暫停\n"
-            "L3 + B            下一首\n"
-            "L3 + X            上一首\n"
-            "L3 + 上鍵         音量加\n"
-            "L3 + 下鍵         音量減"
+            "預設 L3 + A       播放 / 暫停\n"
+            "預設 L3 + B       下一首\n"
+            "預設 L3 + X       上一首\n"
+            "預設 L3 + 右鍵    音量加\n"
+            "預設 L3 + 左鍵    音量減\n"
+            "Electron 控制台可逐列自訂第二鍵"
         )
         tk.Label(
             hotkey_section,
@@ -1689,9 +1776,6 @@ class OverlayUI:
         self.gamepad_thread = GamepadThread(self.output, self.stop_event)
         self.gamepad_thread.start()
 
-        self.telemetry_thread = TelemetryThread(self.output, self.stop_event)
-        self.telemetry_thread.start()
-
     def run_media_worker(self) -> None:
         asyncio.run(media_poll_loop(self.output, self.stop_event))
 
@@ -1800,8 +1884,8 @@ class OverlayUI:
         ).pack(fill="x", pady=(0, 16))
 
         steps = (
-            "1. 按下「開啟 YouTube Music」或「開啟 Spotify」。\n"
-            "2. 在瀏覽器或 Spotify 桌面版登入。\n"
+            f"1. 按下想使用的服務（{SUPPORTED_MUSIC_LABEL}）。\n"
+            "2. 在官方網站或桌面版登入。\n"
             "3. 播放任一首歌曲，讓播放器開始跑。\n"
             "4. 回到這裡按「我已登入並播放，重新檢查」。"
         )
@@ -1860,7 +1944,21 @@ class OverlayUI:
             relief="flat",
             padx=12,
             pady=10,
-        ).pack(side="left", fill="x", expand=True)
+        ).pack(side="left", fill="x", expand=True, padx=(7, 0))
+
+        tk.Button(
+            actions,
+            text="開啟 KKBOX",
+            command=self.open_kkbox,
+            font=("Microsoft JhengHei UI", 10, "bold"),
+            bg="#39c5ff",
+            fg="#061827",
+            activebackground="#21a9df",
+            activeforeground="#061827",
+            relief="flat",
+            padx=12,
+            pady=10,
+        ).pack(side="left", fill="x", expand=True, padx=(8, 0))
 
         tk.Button(
             content,
@@ -1918,11 +2016,8 @@ class OverlayUI:
                     self.gamepad_text.set(payload)
                 elif kind == "gamepad_inputs":
                     pass
-                elif kind == "telemetry_data":
-                    try:
-                        print(json.dumps({"type": "telemetry:update", "data": payload}), flush=True)
-                    except Exception:
-                        pass
+                elif kind == "gamepad_profile_required":
+                    self.gamepad_text.set(f"請在 Electron 控制台選擇手把類型：{payload['deviceName']}")
         except queue.Empty:
             pass
 
@@ -1936,6 +2031,9 @@ class OverlayUI:
 
         if "apple" in app_id:
             return "APPLE MUSIC", "#111111"
+
+        if "kkbox" in app_id:
+            return "KKBOX", MUSIC_SERVICES["kkbox"]["accent"]
 
         if "youtube" in app_id:
             return "YOUTUBE MUSIC", "#ff0033"
@@ -2053,6 +2151,10 @@ class OverlayUI:
     def open_apple_music(self) -> None:
         self.set_music_service("apple")
         webbrowser.open(APPLE_MUSIC_URL)
+
+    def open_kkbox(self) -> None:
+        self.set_music_service("kkbox")
+        webbrowser.open(KKBOX_URL)
 
     def toggle_overlay(self) -> None:
         self.overlay_visible = not self.overlay_visible
@@ -2183,6 +2285,11 @@ def handle_backend_command(command: dict, stop_event: threading.Event) -> None:
         settings["music_service"] = "apple"
         save_settings(settings)
         webbrowser.open(APPLE_MUSIC_URL)
+    elif command_type == "open:kkbox":
+        settings = load_settings()
+        settings["music_service"] = "kkbox"
+        save_settings(settings)
+        webbrowser.open(KKBOX_URL)
     elif command_type == "settings:setService":
         service = normalize_music_service(command.get("service"))
         settings = load_settings()
@@ -2198,6 +2305,51 @@ def handle_backend_command(command: dict, stop_event: threading.Event) -> None:
         settings = load_settings()
         settings["show_lyrics"] = show
         save_settings(settings)
+    elif command_type == "settings:setGamepadBindings":
+        bindings, error = validate_gamepad_bindings(command.get("bindings"))
+        if error or bindings is None:
+            emit_backend_event(
+                {
+                    "type": "settings:error",
+                    "setting": "gamepad_bindings",
+                    "message": error or "手把快捷鍵設定無法儲存",
+                }
+            )
+        else:
+            settings = load_settings()
+            settings["gamepad_bindings"] = bindings
+            save_settings(settings)
+            set_runtime_gamepad_bindings(bindings)
+            emit_backend_event(
+                {
+                    "type": "settings:update",
+                    "settings": {"gamepad_bindings": bindings},
+                }
+            )
+    elif command_type == "settings:setGamepadProfile":
+        device_key = normalize_gamepad_device_key(command.get("deviceKey"))
+        profile_kind = str(command.get("profile", "")).strip().lower()
+        if not device_key or profile_kind not in ("xbox", "playstation"):
+            emit_backend_event(
+                {
+                    "type": "settings:error",
+                    "setting": "gamepad_profile",
+                    "message": "手把類型設定無法儲存",
+                }
+            )
+        else:
+            settings = load_settings()
+            overrides = normalize_gamepad_profile_overrides(settings.get("gamepad_profile_overrides"))
+            overrides[device_key] = profile_kind
+            settings["gamepad_profile_overrides"] = overrides
+            save_settings(settings)
+            set_runtime_gamepad_profile_overrides(overrides)
+            emit_backend_event(
+                {
+                    "type": "settings:update",
+                    "settings": {"gamepad_profile_overrides": overrides},
+                }
+            )
     elif command_type == "app:quit":
         stop_event.set()
     elif command_type == "protocol:error":
@@ -2223,7 +2375,6 @@ def run_stdio_backend() -> int:
     )
     hotkey_thread = HotkeyThread(output, stop_event)
     gamepad_thread = GamepadThread(output, stop_event)
-    telemetry_thread = TelemetryThread(output, stop_event)
     stdin_thread = threading.Thread(
         target=read_backend_commands,
         args=(command_queue, stop_event),
@@ -2234,7 +2385,6 @@ def run_stdio_backend() -> int:
     media_thread.start()
     hotkey_thread.start()
     gamepad_thread.start()
-    telemetry_thread.start()
     stdin_thread.start()
 
     emit_backend_event(
@@ -2283,8 +2433,8 @@ def run_stdio_backend() -> int:
                 emit_backend_event({"type": "gamepad:status", "message": payload})
             elif kind == "gamepad_inputs":
                 emit_backend_event({"type": "gamepad:inputs", "pressed": payload})
-            elif kind == "telemetry_data":
-                emit_backend_event({"type": "telemetry:update", "data": payload})
+            elif kind == "gamepad_profile_required":
+                emit_backend_event({"type": "gamepad:profileRequired", **payload})
     finally:
         stop_event.set()
         hotkey_thread.stop()
@@ -2387,8 +2537,16 @@ def main() -> int:
     if args.stdio_backend:
         return run_stdio_backend()
 
+    if TK_IMPORT_ERROR is not None or messagebox is None or tk is None:
+        print(f"Tkinter is required by the legacy GUI.\n\n{TK_IMPORT_ERROR}", file=sys.stderr)
+        return 1
+
     if PIL_IMPORT_ERROR is not None:
         messagebox.showerror(APP_TITLE, f"Pillow is required.\n\n{PIL_IMPORT_ERROR}")
+        return 1
+
+    if IMAGETK_IMPORT_ERROR is not None:
+        messagebox.showerror(APP_TITLE, f"Pillow ImageTk is required.\n\n{IMAGETK_IMPORT_ERROR}")
         return 1
 
     output: queue.Queue = queue.Queue()
@@ -2414,3 +2572,4 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
